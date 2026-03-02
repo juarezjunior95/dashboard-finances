@@ -3,6 +3,7 @@ import FileImporter from './components/FileImporter'
 import Dashboard from './components/Dashboard'
 import DarkToggle from './components/DarkToggle'
 import Login from './components/Login'
+import InvestmentTracker from './components/InvestmentTracker'
 import { useDarkMode } from './hooks/useDarkMode'
 import { useAuth } from './contexts/AuthContext'
 
@@ -214,6 +215,9 @@ export default function App() {
             dark={dark}
           />
         )}
+
+        {/* Investimentos */}
+        <InvestmentTracker />
       </main>
     </div>
   )
