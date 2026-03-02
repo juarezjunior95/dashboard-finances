@@ -3,7 +3,7 @@ import FileImporter from './components/FileImporter'
 import Dashboard from './components/Dashboard'
 import DarkToggle from './components/DarkToggle'
 import Login from './components/Login'
-import InvestmentTracker from './components/InvestmentTracker'
+import InvestmentPlanner from './components/InvestmentPlanner'
 import { useDarkMode } from './hooks/useDarkMode'
 import { useAuth } from './contexts/AuthContext'
 
@@ -52,7 +52,7 @@ function InputField({ label, name, value, onChange, color }) {
           value={value || ''}
           onChange={onChange}
           placeholder="0,00"
-          className={`w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm font-medium
+          className={`w-full pl-9 pr-3 py-2 sm:py-2.5 rounded-xl border text-sm font-medium
             bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100
             placeholder-gray-300 dark:placeholder-gray-600
             focus:outline-none focus:ring-2 transition-shadow
@@ -115,28 +115,30 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      {/* Header */}
-      <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
-        <div className="max-w-5xl mx-auto px-4 py-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Dashboard de Finanças</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+      {/* Header — sticky */}
+      <header className="sticky top-0 z-40 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800">
+        <div className="max-w-5xl mx-auto px-3 sm:px-4 py-3 sm:py-4 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-2xl font-bold text-gray-800 dark:text-gray-100 truncate">
+              Dashboard de Finanças
+            </h1>
+            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate">
               {user.email}
             </p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
             <DarkToggle dark={dark} onToggle={toggle} />
             {showDash && (
               <button
                 onClick={handleReset}
-                className="text-sm text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 transition-colors cursor-pointer"
+                className="hidden sm:inline text-sm text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 transition-colors cursor-pointer"
               >
-                Limpar dados
+                Limpar
               </button>
             )}
             <button
               onClick={signOut}
-              className="text-sm font-medium text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 transition-colors cursor-pointer"
+              className="text-xs sm:text-sm font-medium text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 transition-colors cursor-pointer"
             >
               Sair
             </button>
@@ -144,19 +146,19 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-8 space-y-8">
+      <main className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-8 space-y-4 sm:space-y-8">
         {/* Import + Manual inputs */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
           {/* File Importer */}
-          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-            <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-4">Importar arquivo</h2>
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-6">
+            <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 sm:mb-4">Importar arquivo</h2>
             <FileImporter onTotals={handleImport} />
           </div>
 
           {/* Manual inputs */}
-          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-            <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-4">Entrada manual</h2>
-            <div className="grid grid-cols-2 gap-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-6">
+            <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 sm:mb-4">Entrada manual</h2>
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <InputField
                 label="Receita"
                 name="receita"
@@ -187,8 +189,8 @@ export default function App() {
               />
             </div>
 
-            <div className="mt-5 flex items-center justify-between">
-              <span className="text-xs text-gray-400 dark:text-gray-500">
+            <div className="mt-4 sm:mt-5 flex items-center justify-between gap-2">
+              <span className="text-xs text-gray-400 dark:text-gray-500 truncate">
                 {hasValues
                   ? `Total: ${BRL_FMT(totals.receita)} receita`
                   : 'Preencha os campos acima'}
@@ -197,11 +199,21 @@ export default function App() {
                 onClick={handleApplyManual}
                 disabled={!hasValues}
                 className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed
-                  text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors cursor-pointer"
+                  text-white text-sm font-medium px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl transition-colors cursor-pointer shrink-0"
               >
                 Aplicar
               </button>
             </div>
+
+            {/* Mobile-only reset button */}
+            {showDash && (
+              <button
+                onClick={handleReset}
+                className="sm:hidden mt-3 w-full text-xs text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 transition-colors cursor-pointer text-center"
+              >
+                Limpar dados
+              </button>
+            )}
           </div>
         </div>
 
@@ -216,8 +228,8 @@ export default function App() {
           />
         )}
 
-        {/* Investimentos */}
-        <InvestmentTracker />
+        {/* Planejamento de Investimentos */}
+        <InvestmentPlanner dark={dark} />
       </main>
     </div>
   )

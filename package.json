@@ -13,6 +13,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.98.0",
     "chart.js": "^4.5.1",
+    "date-fns": "^4.1.0",
     "papaparse": "^5.5.3",
     "react": "^19.2.0",
     "react-chartjs-2": "^5.3.1",

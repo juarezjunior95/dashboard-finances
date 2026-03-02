@@ -62,7 +62,7 @@ function GoalSection({ goal, onSaved }) {
   }
 
   return (
-    <form onSubmit={handleSave} className="space-y-4">
+    <form onSubmit={handleSave} className="space-y-3 sm:space-y-4">
       <div>
         <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">
           Nome da meta
@@ -77,7 +77,7 @@ function GoalSection({ goal, onSaved }) {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">
             Valor alvo (R$)
@@ -265,19 +265,19 @@ function InvestmentList({ investments, onDeleted }) {
   }
 
   return (
-    <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+    <div className="space-y-2 max-h-72 overflow-y-auto overflow-x-auto pr-1">
       {investments.map((inv) => (
         <div
           key={inv.id}
-          className="flex items-center justify-between bg-gray-50 dark:bg-gray-800/50 rounded-xl px-4 py-3"
+          className="flex items-center justify-between bg-gray-50 dark:bg-gray-800/50 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 min-w-0"
         >
           <div>
-            <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+            <span className="text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-200">
               {formatMonth(inv.month)}
             </span>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
+            <span className="text-xs sm:text-sm font-bold text-indigo-600 dark:text-indigo-400">
               {BRL(inv.amount)}
             </span>
             <button
@@ -327,7 +327,7 @@ export default function InvestmentTracker() {
 
   if (loading) {
     return (
-      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-6">
         <div className="flex items-center justify-center py-8">
           <div className="w-6 h-6 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
         </div>
@@ -336,7 +336,7 @@ export default function InvestmentTracker() {
   }
 
   return (
-    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 space-y-6">
+    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-6 space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400">
           Investimentos
@@ -370,11 +370,11 @@ export default function InvestmentTracker() {
       <GoalProgress goal={goal} totalInvested={totalInvested} />
 
       {/* Total acumulado */}
-      <div className="bg-indigo-50 dark:bg-indigo-950 rounded-xl px-4 py-3 flex items-center justify-between">
+      <div className="bg-indigo-50 dark:bg-indigo-950 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between gap-2">
         <span className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
           Total acumulado
         </span>
-        <span className="text-lg font-bold text-indigo-700 dark:text-indigo-300">
+        <span className="text-base sm:text-lg font-bold text-indigo-700 dark:text-indigo-300">
           {BRL(totalInvested)}
         </span>
       </div>

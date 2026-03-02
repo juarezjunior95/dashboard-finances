@@ -260,8 +260,8 @@ export default function FileImporter({ onTotals }) {
         onDragLeave={handleDragLeave}
         onClick={() => inputRef.current?.click()}
         className={`
-          relative flex flex-col items-center justify-center gap-3
-          rounded-2xl border-2 border-dashed p-10 cursor-pointer
+          relative flex flex-col items-center justify-center gap-2 sm:gap-3
+          rounded-2xl border-2 border-dashed p-6 sm:p-10 cursor-pointer
           transition-all duration-200
           ${dragging
             ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950 scale-[1.02]'
@@ -276,20 +276,20 @@ export default function FileImporter({ onTotals }) {
           className="hidden"
         />
 
-        <div className="text-4xl">
+        <div className="text-3xl sm:text-4xl">
           {status === 'loading' && '⏳'}
           {status === 'success' && '✅'}
           {status === 'error' && '❌'}
           {(status === 'idle' || dragging) && '📂'}
         </div>
 
-        <p className="text-gray-600 dark:text-gray-300 text-center text-sm font-medium">
+        <p className="text-gray-600 dark:text-gray-300 text-center text-xs sm:text-sm font-medium">
           {status === 'loading'
             ? 'Processando arquivo...'
             : 'Arraste um arquivo aqui ou clique para selecionar'}
         </p>
 
-        <span className="text-xs text-gray-400 dark:text-gray-500">CSV, XLSX ou XML</span>
+        <span className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">CSV, XLSX ou XML</span>
       </div>
 
       {/* Mensagem de status */}
