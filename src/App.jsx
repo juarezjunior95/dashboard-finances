@@ -1,34 +1,17 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { addMonths, format, startOfMonth } from 'date-fns'
 import FileImporter from './components/FileImporter'
 import Dashboard from './components/Dashboard'
 import DarkToggle from './components/DarkToggle'
 import Login from './components/Login'
+import MonthSelector from './components/MonthSelector'
 import InvestmentPlanner from './components/InvestmentPlanner'
 import { useDarkMode } from './hooks/useDarkMode'
 import { useAuth } from './contexts/AuthContext'
+import { getSnapshot, upsertSnapshot, listMonths } from './services/snapshotService'
 
-const STORAGE_KEY = 'dashboard-financas-totals'
+const LEGACY_KEY = 'dashboard-financas-totals'
 const EMPTY = { receita: 0, fixas: 0, cartao: 0, invest: 0 }
-
-function loadFromStorage() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
-    return {
-      receita: Number(parsed.receita) || 0,
-      fixas: Number(parsed.fixas) || 0,
-      cartao: Number(parsed.cartao) || 0,
-      invest: Number(parsed.invest) || 0,
-    }
-  } catch {
-    return null
-  }
-}
-
-function saveToStorage(totals) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(totals))
-}
 
 const BRL_FMT = (v) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -74,43 +57,177 @@ function LoadingScreen() {
   )
 }
 
+function prevMonthKey(month) {
+  const date = addMonths(new Date(month + '-01'), -1)
+  return format(startOfMonth(date), 'yyyy-MM')
+}
+
 export default function App() {
   const { dark, toggle } = useDarkMode()
-  const { user, loading, signOut } = useAuth()
+  const { user, loading: authLoading, signOut } = useAuth()
 
-  const [totals, setTotals] = useState(() => loadFromStorage() ?? { ...EMPTY })
-  const [showDash, setShowDash] = useState(() => {
-    const saved = loadFromStorage()
-    return saved !== null && Object.values(saved).some((v) => v > 0)
-  })
+  const currentMonth = useMemo(() => format(new Date(), 'yyyy-MM'), [])
+
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth)
+  const [totals, setTotals] = useState({ ...EMPTY })
+  const [prevTotals, setPrevTotals] = useState(null)
+  const [availableMonths, setAvailableMonths] = useState([])
+  const [showDash, setShowDash] = useState(false)
+  const [monthLoading, setMonthLoading] = useState(true)
+  const [saveStatus, setSaveStatus] = useState(null)
+
+  const totalsRef = useRef(totals)
+  const saveTimer = useRef(null)
+  const statusTimer = useRef(null)
+  const selectedMonthRef = useRef(selectedMonth)
+
+  useEffect(() => { totalsRef.current = totals }, [totals])
+  useEffect(() => { selectedMonthRef.current = selectedMonth }, [selectedMonth])
+  useEffect(() => () => { clearTimeout(saveTimer.current); clearTimeout(statusTimer.current) }, [])
+
+  // ── Load available months ──
+
+  const refreshMonths = useCallback(async () => {
+    try {
+      const months = await listMonths()
+      setAvailableMonths(months)
+    } catch { /* silent */ }
+  }, [])
+
+  // ── Load snapshot for a given month ──
+
+  const loadMonth = useCallback(async (month) => {
+    setMonthLoading(true)
+    try {
+      let snap = await getSnapshot(month)
+
+      if (!snap && month === currentMonth) {
+        const legacyRaw = localStorage.getItem(LEGACY_KEY)
+        if (legacyRaw) {
+          try {
+            const legacy = JSON.parse(legacyRaw)
+            const hasSomething = Object.values(legacy).some(v => Number(v) > 0)
+            if (hasSomething) {
+              snap = {
+                receita: Number(legacy.receita) || 0,
+                fixas: Number(legacy.fixas) || 0,
+                cartao: Number(legacy.cartao) || 0,
+                invest: Number(legacy.invest) || 0,
+              }
+              await upsertSnapshot({ month, ...snap })
+              localStorage.removeItem(LEGACY_KEY)
+              await refreshMonths()
+            }
+          } catch { /* ignore corrupt legacy */ }
+        }
+      }
+
+      if (snap) {
+        const t = {
+          receita: Number(snap.receita) || 0,
+          fixas: Number(snap.fixas) || 0,
+          cartao: Number(snap.cartao) || 0,
+          invest: Number(snap.invest) || 0,
+        }
+        setTotals(t)
+        setShowDash(Object.values(t).some(v => v > 0))
+      } else {
+        setTotals({ ...EMPTY })
+        setShowDash(false)
+      }
+
+      const prev = await getSnapshot(prevMonthKey(month))
+      if (prev) {
+        setPrevTotals({
+          receita: Number(prev.receita) || 0,
+          fixas: Number(prev.fixas) || 0,
+          cartao: Number(prev.cartao) || 0,
+          invest: Number(prev.invest) || 0,
+        })
+      } else {
+        setPrevTotals(null)
+      }
+    } catch {
+      setTotals({ ...EMPTY })
+      setShowDash(false)
+      setPrevTotals(null)
+    } finally {
+      setMonthLoading(false)
+    }
+  }, [currentMonth, refreshMonths])
+
+  // ── Initial load ──
 
   useEffect(() => {
-    saveToStorage(totals)
-  }, [totals])
+    if (!user) return
+    refreshMonths()
+    loadMonth(selectedMonth)
+  }, [user, selectedMonth, loadMonth, refreshMonths])
+
+  // ── Debounced autosave ──
+
+  const scheduleSave = useCallback(() => {
+    clearTimeout(saveTimer.current)
+    setSaveStatus('saving')
+    saveTimer.current = setTimeout(async () => {
+      const t = totalsRef.current
+      const month = selectedMonthRef.current
+      const hasSomething = Object.values(t).some(v => v > 0)
+      if (!hasSomething) { setSaveStatus(null); return }
+
+      try {
+        await upsertSnapshot({ month, ...t })
+        setSaveStatus('saved')
+        clearTimeout(statusTimer.current)
+        statusTimer.current = setTimeout(() => setSaveStatus(null), 2000)
+        const months = await listMonths()
+        setAvailableMonths(months)
+      } catch {
+        setSaveStatus('error')
+      }
+    }, 600)
+  }, [])
+
+  // ── Handlers ──
 
   const handleImport = useCallback((imported) => {
     setTotals(imported)
     setShowDash(true)
-  }, [])
+    totalsRef.current = imported
+    scheduleSave()
+  }, [scheduleSave])
 
   const handleInputChange = (e) => {
     const { name, value } = e.target
-    setTotals((prev) => ({ ...prev, [name]: parseFloat(value) || 0 }))
+    setTotals((prev) => {
+      const next = { ...prev, [name]: parseFloat(value) || 0 }
+      totalsRef.current = next
+      return next
+    })
+    scheduleSave()
   }
 
   const handleApplyManual = () => {
     setShowDash(true)
+    scheduleSave()
   }
 
-  const handleReset = () => {
+  const handleReset = async () => {
     setTotals({ ...EMPTY })
     setShowDash(false)
-    localStorage.removeItem(STORAGE_KEY)
+    clearTimeout(saveTimer.current)
+    setSaveStatus(null)
+  }
+
+  const handleMonthChange = (month) => {
+    clearTimeout(saveTimer.current)
+    setSaveStatus(null)
+    setSelectedMonth(month)
   }
 
   const hasValues = Object.values(totals).some((v) => v > 0)
 
-  if (loading) return <LoadingScreen />
+  if (authLoading) return <LoadingScreen />
   if (!user) return <Login />
 
   return (
@@ -127,6 +244,11 @@ export default function App() {
             </p>
           </div>
           <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+            <MonthSelector
+              selectedMonth={selectedMonth}
+              onChange={handleMonthChange}
+              availableMonths={availableMonths}
+            />
             <DarkToggle dark={dark} onToggle={toggle} />
             {showDash && (
               <button
@@ -144,92 +266,114 @@ export default function App() {
             </button>
           </div>
         </div>
+
+        {/* Save indicator */}
+        {saveStatus && (
+          <div className="max-w-5xl mx-auto px-3 sm:px-4 pb-2">
+            <span className={`text-[10px] sm:text-xs font-medium ${
+              saveStatus === 'saving' ? 'text-amber-600 dark:text-amber-400'
+                : saveStatus === 'saved' ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-red-600 dark:text-red-400'
+            }`}>
+              {saveStatus === 'saving' ? 'Salvando...' : saveStatus === 'saved' ? 'Salvo' : 'Erro ao salvar'}
+            </span>
+          </div>
+        )}
       </header>
 
       <main className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-8 space-y-4 sm:space-y-8">
-        {/* Import + Manual inputs */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-          {/* File Importer */}
-          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-6">
-            <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 sm:mb-4">Importar arquivo</h2>
-            <FileImporter onTotals={handleImport} />
+        {monthLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="w-6 h-6 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
           </div>
+        ) : (
+          <>
+            {/* Import + Manual inputs */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+              {/* File Importer */}
+              <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-6">
+                <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 sm:mb-4">Importar arquivo</h2>
+                <FileImporter onTotals={handleImport} />
+              </div>
 
-          {/* Manual inputs */}
-          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-6">
-            <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 sm:mb-4">Entrada manual</h2>
-            <div className="grid grid-cols-2 gap-3 sm:gap-4">
-              <InputField
-                label="Receita"
-                name="receita"
-                value={totals.receita}
-                onChange={handleInputChange}
-                color="border-emerald-200 dark:border-emerald-800 focus:ring-emerald-400"
-              />
-              <InputField
-                label="Contas Fixas"
-                name="fixas"
-                value={totals.fixas}
-                onChange={handleInputChange}
-                color="border-rose-200 dark:border-rose-800 focus:ring-rose-400"
-              />
-              <InputField
-                label="Cartão"
-                name="cartao"
-                value={totals.cartao}
-                onChange={handleInputChange}
-                color="border-orange-200 dark:border-orange-800 focus:ring-orange-400"
-              />
-              <InputField
-                label="Investimentos"
-                name="invest"
-                value={totals.invest}
-                onChange={handleInputChange}
-                color="border-indigo-200 dark:border-indigo-800 focus:ring-indigo-400"
-              />
+              {/* Manual inputs */}
+              <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-6">
+                <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 sm:mb-4">Entrada manual</h2>
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                  <InputField
+                    label="Receita"
+                    name="receita"
+                    value={totals.receita}
+                    onChange={handleInputChange}
+                    color="border-emerald-200 dark:border-emerald-800 focus:ring-emerald-400"
+                  />
+                  <InputField
+                    label="Contas Fixas"
+                    name="fixas"
+                    value={totals.fixas}
+                    onChange={handleInputChange}
+                    color="border-rose-200 dark:border-rose-800 focus:ring-rose-400"
+                  />
+                  <InputField
+                    label="Cartão"
+                    name="cartao"
+                    value={totals.cartao}
+                    onChange={handleInputChange}
+                    color="border-orange-200 dark:border-orange-800 focus:ring-orange-400"
+                  />
+                  <InputField
+                    label="Investimentos"
+                    name="invest"
+                    value={totals.invest}
+                    onChange={handleInputChange}
+                    color="border-indigo-200 dark:border-indigo-800 focus:ring-indigo-400"
+                  />
+                </div>
+
+                <div className="mt-4 sm:mt-5 flex items-center justify-between gap-2">
+                  <span className="text-xs text-gray-400 dark:text-gray-500 truncate">
+                    {hasValues
+                      ? `Total: ${BRL_FMT(totals.receita)} receita`
+                      : 'Preencha os campos acima'}
+                  </span>
+                  <button
+                    onClick={handleApplyManual}
+                    disabled={!hasValues}
+                    className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed
+                      text-white text-sm font-medium px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl transition-colors cursor-pointer shrink-0"
+                  >
+                    Aplicar
+                  </button>
+                </div>
+
+                {/* Mobile-only reset button */}
+                {showDash && (
+                  <button
+                    onClick={handleReset}
+                    className="sm:hidden mt-3 w-full text-xs text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 transition-colors cursor-pointer text-center"
+                  >
+                    Limpar dados
+                  </button>
+                )}
+              </div>
             </div>
 
-            <div className="mt-4 sm:mt-5 flex items-center justify-between gap-2">
-              <span className="text-xs text-gray-400 dark:text-gray-500 truncate">
-                {hasValues
-                  ? `Total: ${BRL_FMT(totals.receita)} receita`
-                  : 'Preencha os campos acima'}
-              </span>
-              <button
-                onClick={handleApplyManual}
-                disabled={!hasValues}
-                className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed
-                  text-white text-sm font-medium px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl transition-colors cursor-pointer shrink-0"
-              >
-                Aplicar
-              </button>
-            </div>
-
-            {/* Mobile-only reset button */}
+            {/* Dashboard */}
             {showDash && (
-              <button
-                onClick={handleReset}
-                className="sm:hidden mt-3 w-full text-xs text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 transition-colors cursor-pointer text-center"
-              >
-                Limpar dados
-              </button>
+              <Dashboard
+                receita={totals.receita}
+                fixas={totals.fixas}
+                cartao={totals.cartao}
+                invest={totals.invest}
+                prevTotals={prevTotals}
+                dark={dark}
+              />
             )}
-          </div>
-        </div>
 
-        {/* Dashboard */}
-        {showDash && (
-          <Dashboard
-            receita={totals.receita}
-            fixas={totals.fixas}
-            cartao={totals.cartao}
-            invest={totals.invest}
-            dark={dark}
-          />
+            {/* Planejamento de Investimentos */}
+            <InvestmentPlanner dark={dark} />
+          </>
         )}
-
-        {/* Planejamento de Investimentos */}
-        <InvestmentPlanner dark={dark} />
       </main>
     </div>
   )

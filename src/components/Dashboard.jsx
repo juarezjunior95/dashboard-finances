@@ -71,7 +71,28 @@ function exportCSV({ receita, fixas, cartao, invest }) {
 
 // ── KPI Card ─────────────────────────────────────────────
 
-function KpiCard({ label, value, percent, color, dark }) {
+function DeltaBadge({ current, previous, invertColor = false }) {
+  if (previous == null || previous === 0) return null
+  const diff = current - previous
+  if (diff === 0) return null
+  const pct = ((diff / previous) * 100).toFixed(1)
+  const up = diff > 0
+  const isGood = invertColor ? !up : up
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-[9px] sm:text-[10px] font-semibold ${
+      isGood
+        ? 'text-emerald-600 dark:text-emerald-400'
+        : 'text-red-500 dark:text-red-400'
+    }`}>
+      <svg xmlns="http://www.w3.org/2000/svg" className={`h-2.5 w-2.5 ${up ? '' : 'rotate-180'}`} viewBox="0 0 20 20" fill="currentColor">
+        <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+      </svg>
+      {Math.abs(pct)}%
+    </span>
+  )
+}
+
+function KpiCard({ label, value, percent, color, dark, prevValue, invertColor }) {
   return (
     <div
       className="rounded-2xl border p-3 sm:p-5 flex flex-col gap-0.5 sm:gap-1"
@@ -83,9 +104,12 @@ function KpiCard({ label, value, percent, color, dark }) {
       <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wide opacity-60 text-gray-700 dark:text-gray-300">
         {label}
       </span>
-      <span className="text-lg sm:text-2xl font-bold" style={{ color: color.bg }}>
-        {formatBRL(value)}
-      </span>
+      <div className="flex items-center gap-1.5">
+        <span className="text-lg sm:text-2xl font-bold" style={{ color: color.bg }}>
+          {formatBRL(value)}
+        </span>
+        <DeltaBadge current={value} previous={prevValue} invertColor={invertColor} />
+      </div>
       <span className="text-[10px] sm:text-xs font-medium" style={{ color: color.bg }}>
         {percent}% da receita
       </span>
@@ -95,7 +119,7 @@ function KpiCard({ label, value, percent, color, dark }) {
 
 // ── Dashboard ────────────────────────────────────────────
 
-export default function Dashboard({ receita, fixas, cartao, invest, dark }) {
+export default function Dashboard({ receita, fixas, cartao, invest, prevTotals, dark }) {
   const total = receita || 1
   const saldoReal = receita - fixas - cartao - invest
   const saldoGrafico = Math.max(saldoReal, 0)
@@ -227,10 +251,14 @@ export default function Dashboard({ receita, fixas, cartao, invest, dark }) {
     <section className="w-full max-w-5xl mx-auto space-y-4 sm:space-y-8">
       {/* KPIs: 1col mobile → 2col tablet → 4col desktop */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <KpiCard label={LABELS.receita} value={receita} percent={pct.receita} color={COLORS.receita} dark={dark} />
-        <KpiCard label={LABELS.fixas} value={fixas} percent={pct.fixas} color={COLORS.fixas} dark={dark} />
-        <KpiCard label={LABELS.cartao} value={cartao} percent={pct.cartao} color={COLORS.cartao} dark={dark} />
-        <KpiCard label={LABELS.invest} value={invest} percent={pct.invest} color={COLORS.invest} dark={dark} />
+        <KpiCard label={LABELS.receita} value={receita} percent={pct.receita} color={COLORS.receita} dark={dark}
+          prevValue={prevTotals?.receita} invertColor={false} />
+        <KpiCard label={LABELS.fixas} value={fixas} percent={pct.fixas} color={COLORS.fixas} dark={dark}
+          prevValue={prevTotals?.fixas} invertColor={true} />
+        <KpiCard label={LABELS.cartao} value={cartao} percent={pct.cartao} color={COLORS.cartao} dark={dark}
+          prevValue={prevTotals?.cartao} invertColor={true} />
+        <KpiCard label={LABELS.invest} value={invest} percent={pct.invest} color={COLORS.invest} dark={dark}
+          prevValue={prevTotals?.invest} invertColor={false} />
       </div>
 
       {/* Saldo */}
