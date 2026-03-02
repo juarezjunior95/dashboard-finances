@@ -1,0 +1,185 @@
+import { useCallback, useEffect, useState } from 'react'
+import FileImporter from './components/FileImporter'
+import Dashboard from './components/Dashboard'
+
+const STORAGE_KEY = 'dashboard-financas-totals'
+const EMPTY = { receita: 0, fixas: 0, cartao: 0, invest: 0 }
+
+function loadFromStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return {
+      receita: Number(parsed.receita) || 0,
+      fixas: Number(parsed.fixas) || 0,
+      cartao: Number(parsed.cartao) || 0,
+      invest: Number(parsed.invest) || 0,
+    }
+  } catch {
+    return null
+  }
+}
+
+function saveToStorage(totals) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(totals))
+}
+
+const BRL_FMT = (v) =>
+  v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+function InputField({ label, name, value, onChange, color }) {
+  return (
+    <div>
+      <label htmlFor={name} className="block text-xs font-semibold text-gray-500 mb-1">
+        {label}
+      </label>
+      <div className="relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-medium text-gray-400">
+          R$
+        </span>
+        <input
+          id={name}
+          name={name}
+          type="number"
+          step="0.01"
+          min="0"
+          value={value || ''}
+          onChange={onChange}
+          placeholder="0,00"
+          className={`w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm font-medium
+            focus:outline-none focus:ring-2 transition-shadow
+            ${color}`}
+        />
+      </div>
+    </div>
+  )
+}
+
+export default function App() {
+  const [totals, setTotals] = useState(() => loadFromStorage() ?? { ...EMPTY })
+  const [showDash, setShowDash] = useState(() => {
+    const saved = loadFromStorage()
+    return saved !== null && Object.values(saved).some((v) => v > 0)
+  })
+
+  useEffect(() => {
+    saveToStorage(totals)
+  }, [totals])
+
+  const handleImport = useCallback((imported) => {
+    setTotals(imported)
+    setShowDash(true)
+  }, [])
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target
+    setTotals((prev) => ({ ...prev, [name]: parseFloat(value) || 0 }))
+  }
+
+  const handleApplyManual = () => {
+    setShowDash(true)
+  }
+
+  const handleReset = () => {
+    setTotals({ ...EMPTY })
+    setShowDash(false)
+    localStorage.removeItem(STORAGE_KEY)
+  }
+
+  const hasValues = Object.values(totals).some((v) => v > 0)
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200">
+        <div className="max-w-5xl mx-auto px-4 py-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800">Dashboard de Finanças</h1>
+            <p className="text-sm text-gray-500">Importe ou digite seus dados financeiros</p>
+          </div>
+          {showDash && (
+            <button
+              onClick={handleReset}
+              className="text-sm text-gray-500 hover:text-red-600 transition-colors cursor-pointer"
+            >
+              Limpar dados
+            </button>
+          )}
+        </div>
+      </header>
+
+      <main className="max-w-5xl mx-auto px-4 py-8 space-y-8">
+        {/* Import + Manual inputs */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* File Importer */}
+          <div className="bg-white rounded-2xl border border-gray-200 p-6">
+            <h2 className="text-sm font-semibold text-gray-500 mb-4">Importar arquivo</h2>
+            <FileImporter onTotals={handleImport} />
+          </div>
+
+          {/* Manual inputs */}
+          <div className="bg-white rounded-2xl border border-gray-200 p-6">
+            <h2 className="text-sm font-semibold text-gray-500 mb-4">Entrada manual</h2>
+            <div className="grid grid-cols-2 gap-4">
+              <InputField
+                label="Receita"
+                name="receita"
+                value={totals.receita}
+                onChange={handleInputChange}
+                color="border-emerald-200 focus:ring-emerald-400"
+              />
+              <InputField
+                label="Despesas Fixas"
+                name="fixas"
+                value={totals.fixas}
+                onChange={handleInputChange}
+                color="border-rose-200 focus:ring-rose-400"
+              />
+              <InputField
+                label="Cartão"
+                name="cartao"
+                value={totals.cartao}
+                onChange={handleInputChange}
+                color="border-orange-200 focus:ring-orange-400"
+              />
+              <InputField
+                label="Investimentos"
+                name="invest"
+                value={totals.invest}
+                onChange={handleInputChange}
+                color="border-indigo-200 focus:ring-indigo-400"
+              />
+            </div>
+
+            <div className="mt-5 flex items-center justify-between">
+              <span className="text-xs text-gray-400">
+                {hasValues
+                  ? `Total: ${BRL_FMT(totals.receita)} receita`
+                  : 'Preencha os campos acima'}
+              </span>
+              <button
+                onClick={handleApplyManual}
+                disabled={!hasValues}
+                className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed
+                  text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors cursor-pointer"
+              >
+                Aplicar
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Dashboard */}
+        {showDash && (
+          <Dashboard
+            receita={totals.receita}
+            fixas={totals.fixas}
+            cartao={totals.cartao}
+            invest={totals.invest}
+          />
+        )}
+      </main>
+    </div>
+  )
+}
