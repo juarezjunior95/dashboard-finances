@@ -77,6 +77,7 @@ export default function InvestmentPlanner({ dark }) {
   const [limits, setLimits] = useState(() => {
     try { return JSON.parse(localStorage.getItem(LIMITS_KEY)) || { min: 0, max: 0 } } catch { return { min: 0, max: 0 } }
   })
+  const [actualEdits, setActualEdits] = useState({})
   const [loading, setLoading] = useState(true)
   const [saveStatus, setSaveStatus] = useState(null)
   const [online, setOnline] = useState(true)
@@ -85,9 +86,14 @@ export default function InvestmentPlanner({ dark }) {
   const goalRef = useRef(goal)
   const saveTimer = useRef(null)
   const statusTimer = useRef(null)
+  const actualTimers = useRef({})
 
   useEffect(() => { goalRef.current = goal }, [goal])
-  useEffect(() => () => { clearTimeout(saveTimer.current); clearTimeout(statusTimer.current) }, [])
+  useEffect(() => () => {
+    clearTimeout(saveTimer.current)
+    clearTimeout(statusTimer.current)
+    Object.values(actualTimers.current).forEach(clearTimeout)
+  }, [])
 
   // ── Load data ──
 
@@ -107,6 +113,17 @@ export default function InvestmentPlanner({ dark }) {
 
   useEffect(() => { loadData() }, [loadData])
 
+  // ── Derived: numeric overrides for calculator ──
+
+  const numericOverrides = useMemo(() => {
+    const result = {}
+    for (const [m, v] of Object.entries(overrides)) {
+      const num = parseFloat(v)
+      if (!isNaN(num) && num > 0) result[m] = num
+    }
+    return result
+  }, [overrides])
+
   // ── Calculated plan ──
 
   const currentMonth = useMemo(() => format(startOfMonth(new Date()), 'yyyy-MM'), [])
@@ -117,11 +134,11 @@ export default function InvestmentPlanner({ dark }) {
       targetAmount: Number(goal.target_amount),
       targetDate: goal.target_date,
       investmentsActual: investments.map(i => ({ month: i.month, amount: Number(i.amount) })),
-      monthlyOverrides: overrides,
+      monthlyOverrides: numericOverrides,
       minPerMonth: Number(limits.min) || 0,
       maxPerMonth: Number(limits.max) || Infinity,
     })
-  }, [goal, investments, overrides, limits])
+  }, [goal, investments, numericOverrides, limits])
 
   // ── Debounced goal save ──
 
@@ -146,7 +163,15 @@ export default function InvestmentPlanner({ dark }) {
     }, 600)
   }, [])
 
-  // ── Handlers ──
+  // ── Save status helper ──
+
+  const flashSaved = useCallback(() => {
+    setSaveStatus('saved')
+    clearTimeout(statusTimer.current)
+    statusTimer.current = setTimeout(() => setSaveStatus(null), 2000)
+  }, [])
+
+  // ── Handlers: goal ──
 
   const handleGoalField = (field, value) => {
     setGoal(prev => ({ ...prev, [field]: value }))
@@ -159,22 +184,70 @@ export default function InvestmentPlanner({ dark }) {
     localStorage.setItem(LIMITS_KEY, JSON.stringify(updated))
   }
 
-  const handleOverride = (month, value) => {
-    const updated = { ...overrides }
-    const num = parseFloat(value)
-    if (!isNaN(num) && num >= 0 && value !== '') {
-      updated[month] = num
-    } else {
-      delete updated[month]
-    }
+  // ── Handlers: planned overrides ──
+
+  const handleOverride = (month, rawValue) => {
+    const updated = { ...overrides, [month]: rawValue }
     setOverrides(updated)
     localStorage.setItem(OVERRIDES_KEY, JSON.stringify(updated))
+  }
+
+  const handleOverrideBlur = (month) => {
+    const raw = overrides[month]
+    if (raw === '' || raw === undefined || raw === null) {
+      const updated = { ...overrides }
+      delete updated[month]
+      setOverrides(updated)
+      localStorage.setItem(OVERRIDES_KEY, JSON.stringify(updated))
+    }
   }
 
   const handleRecalculate = () => {
     setOverrides({})
     localStorage.removeItem(OVERRIDES_KEY)
   }
+
+  // ── Handlers: actual investments ──
+
+  const handleActualChange = (month, rawValue) => {
+    setActualEdits(prev => ({ ...prev, [month]: rawValue }))
+  }
+
+  const commitActual = useCallback(async (month, rawValue) => {
+    const num = parseFloat(rawValue)
+    const inv = investments.find(i => i.month === month)
+
+    if (rawValue === '' || isNaN(num) || num <= 0) {
+      if (inv) {
+        setSaveStatus('saving')
+        try {
+          await deleteInvestment(inv.id)
+          const invs = await listInvestments()
+          setInvestments(invs || [])
+          flashSaved()
+        } catch { setSaveStatus('error') }
+      }
+    } else {
+      setSaveStatus('saving')
+      try {
+        await upsertInvestment({ month, amount: num })
+        const invs = await listInvestments()
+        setInvestments(invs || [])
+        flashSaved()
+      } catch { setSaveStatus('error') }
+    }
+
+    setActualEdits(prev => { const n = { ...prev }; delete n[month]; return n })
+  }, [investments, flashSaved])
+
+  const handleActualBlur = (month) => {
+    clearTimeout(actualTimers.current[month])
+    const raw = actualEdits[month]
+    if (raw === undefined) return
+    commitActual(month, raw)
+  }
+
+  // ── Handlers: actions ──
 
   const handleApplySuggestion = async () => {
     if (!plan) return
@@ -187,22 +260,10 @@ export default function InvestmentPlanner({ dark }) {
       await upsertInvestment({ month: currentMonth, amount })
       const invs = await listInvestments()
       setInvestments(invs || [])
-      setSaveStatus('saved')
-      clearTimeout(statusTimer.current)
-      statusTimer.current = setTimeout(() => setSaveStatus(null), 2000)
+      flashSaved()
     } catch {
       setSaveStatus('error')
     }
-  }
-
-  const handleDeleteInv = async (month) => {
-    const inv = investments.find(i => i.month === month)
-    if (!inv) return
-    try {
-      await deleteInvestment(inv.id)
-      const invs = await listInvestments()
-      setInvestments(invs || [])
-    } catch { /* RLS protects */ }
   }
 
   const handleCreateGoal = async (e) => {
@@ -220,9 +281,7 @@ export default function InvestmentPlanner({ dark }) {
       const saved = await upsertGoal(data)
       setGoal(saved)
       setEditing(false)
-      setSaveStatus('saved')
-      clearTimeout(statusTimer.current)
-      statusTimer.current = setTimeout(() => setSaveStatus(null), 2000)
+      flashSaved()
     } catch {
       setSaveStatus('error')
     }
@@ -425,6 +484,18 @@ export default function InvestmentPlanner({ dark }) {
               <tbody>
                 {plan.schedule.map((row) => {
                   const isCurrent = row.month === currentMonth
+
+                  /* ── Planned value for input ── */
+                  const plannedDisplay = row.month in overrides
+                    ? overrides[row.month]
+                    : (row.planned || '')
+
+                  /* ── Actual value for input ── */
+                  const isEditingActual = row.month in actualEdits
+                  const actualDisplay = isEditingActual
+                    ? actualEdits[row.month]
+                    : (row.actual > 0 ? row.actual : '')
+
                   return (
                     <tr
                       key={row.month}
@@ -432,21 +503,28 @@ export default function InvestmentPlanner({ dark }) {
                         isCurrent ? 'bg-indigo-50/50 dark:bg-indigo-950/20' : ''
                       }`}
                     >
+                      {/* Mês */}
                       <td className="py-2 px-2 font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">
                         {fmtMonth(row.month)}
                         {isCurrent && <span className="ml-1 text-[9px] text-indigo-500 dark:text-indigo-400 font-bold">ATUAL</span>}
                       </td>
+
+                      {/* Recomendado */}
                       <td className="py-2 px-2 text-right text-gray-400 dark:text-gray-500">
                         {row.recommended > 0 ? BRL(row.recommended) : '—'}
                       </td>
+
+                      {/* Planejado (editável para meses futuros sem investimento real) */}
                       <td className="py-2 px-2 text-right">
                         {row.editable ? (
                           <input
                             type="number"
                             step="0.01"
                             min="0"
-                            value={overrides[row.month] ?? (row.planned || '')}
+                            value={plannedDisplay}
                             onChange={(e) => handleOverride(row.month, e.target.value)}
+                            onBlur={() => handleOverrideBlur(row.month)}
+                            placeholder={String(row.recommended || 0)}
                             className={SMALL_INPUT_CLS}
                           />
                         ) : (
@@ -455,24 +533,26 @@ export default function InvestmentPlanner({ dark }) {
                           </span>
                         )}
                       </td>
+
+                      {/* Real (editável — salva no blur via upsertInvestment) */}
                       <td className="py-2 px-2 text-right">
-                        {row.actual > 0 ? (
-                          <span className="inline-flex items-center gap-1">
-                            <span className="font-medium text-indigo-600 dark:text-indigo-400">{BRL(row.actual)}</span>
-                            <button
-                              onClick={() => handleDeleteInv(row.month)}
-                              className="text-gray-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400 transition-colors cursor-pointer"
-                              title="Excluir investimento"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                          </span>
-                        ) : (
-                          <span className="text-gray-300 dark:text-gray-600">—</span>
-                        )}
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={actualDisplay}
+                          onChange={(e) => handleActualChange(row.month, e.target.value)}
+                          onBlur={() => handleActualBlur(row.month)}
+                          placeholder="0"
+                          className={`${SMALL_INPUT_CLS} ${
+                            row.actual > 0 && !isEditingActual
+                              ? 'font-medium text-indigo-600 dark:text-indigo-400'
+                              : ''
+                          }`}
+                        />
                       </td>
+
+                      {/* Gap */}
                       <td className={`py-2 px-2 text-right font-medium ${
                         row.gap > 0 ? 'text-emerald-600 dark:text-emerald-400'
                           : row.gap < 0 ? 'text-red-500 dark:text-red-400'
@@ -480,9 +560,13 @@ export default function InvestmentPlanner({ dark }) {
                       }`}>
                         {row.actual > 0 && row.recommended > 0 ? BRL(row.gap) : '—'}
                       </td>
+
+                      {/* Projeção */}
                       <td className="py-2 px-2 text-right text-gray-600 dark:text-gray-300">
                         {BRL(row.projectedTotal)}
                       </td>
+
+                      {/* % */}
                       <td className="py-2 px-2 text-right text-gray-600 dark:text-gray-300">
                         {row.percent.toFixed(1)}%
                       </td>
