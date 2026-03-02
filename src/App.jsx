@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import FileImporter from './components/FileImporter'
 import Dashboard from './components/Dashboard'
 import DarkToggle from './components/DarkToggle'
+import Login from './components/Login'
 import { useDarkMode } from './hooks/useDarkMode'
+import { useAuth } from './contexts/AuthContext'
 
 const STORAGE_KEY = 'dashboard-financas-totals'
 const EMPTY = { receita: 0, fixas: 0, cartao: 0, invest: 0 }
@@ -60,8 +62,21 @@ function InputField({ label, name, value, onChange, color }) {
   )
 }
 
+function LoadingScreen() {
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
+      <div className="text-center space-y-4">
+        <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto" />
+        <p className="text-sm text-gray-500 dark:text-gray-400">Carregando...</p>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const { dark, toggle } = useDarkMode()
+  const { user, loading, signOut } = useAuth()
+
   const [totals, setTotals] = useState(() => loadFromStorage() ?? { ...EMPTY })
   const [showDash, setShowDash] = useState(() => {
     const saved = loadFromStorage()
@@ -94,6 +109,9 @@ export default function App() {
 
   const hasValues = Object.values(totals).some((v) => v > 0)
 
+  if (loading) return <LoadingScreen />
+  if (!user) return <Login />
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Header */}
@@ -101,7 +119,9 @@ export default function App() {
         <div className="max-w-5xl mx-auto px-4 py-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Dashboard de Finanças</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Importe ou digite seus dados financeiros</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {user.email}
+            </p>
           </div>
           <div className="flex items-center gap-4">
             <DarkToggle dark={dark} onToggle={toggle} />
@@ -113,6 +133,12 @@ export default function App() {
                 Limpar dados
               </button>
             )}
+            <button
+              onClick={signOut}
+              className="text-sm font-medium text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 transition-colors cursor-pointer"
+            >
+              Sair
+            </button>
           </div>
         </div>
       </header>
@@ -138,7 +164,7 @@ export default function App() {
                 color="border-emerald-200 dark:border-emerald-800 focus:ring-emerald-400"
               />
               <InputField
-                label="Despesas Fixas"
+                label="Contas Fixas"
                 name="fixas"
                 value={totals.fixas}
                 onChange={handleInputChange}
