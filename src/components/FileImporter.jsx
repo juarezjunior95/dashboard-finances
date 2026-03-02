@@ -179,17 +179,15 @@ function getParser(fileName) {
 // ── Componente ───────────────────────────────────────────
 
 export default function FileImporter({ onTotals }) {
-  const [status, setStatus] = useState('idle') // idle | loading | success | error
+  const [status, setStatus] = useState('idle')
   const [message, setMessage] = useState('')
   const [dragging, setDragging] = useState(false)
-  const [rows, setRows] = useState([])
   const inputRef = useRef(null)
 
   const processFile = useCallback(
     async (file) => {
       setStatus('loading')
       setMessage('')
-      setRows([])
 
       try {
         const parser = getParser(file.name)
@@ -210,7 +208,6 @@ export default function FileImporter({ onTotals }) {
 
         const totals = computeTotals(normalized)
 
-        setRows(normalized)
         setStatus('success')
         setMessage(`${normalized.length} lançamento(s) importado(s) de "${file.name}"`)
         onTotals?.(totals)
@@ -246,13 +243,11 @@ export default function FileImporter({ onTotals }) {
   }
 
   const statusColors = {
-    idle: 'border-gray-300 bg-white',
-    loading: 'border-indigo-300 bg-indigo-50',
-    success: 'border-emerald-400 bg-emerald-50',
-    error: 'border-red-400 bg-red-50',
+    idle: 'border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-800',
+    loading: 'border-indigo-300 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-950',
+    success: 'border-emerald-400 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950',
+    error: 'border-red-400 bg-red-50 dark:border-red-700 dark:bg-red-950',
   }
-
-  const totals = rows.length ? computeTotals(rows) : null
 
   return (
     <div className="w-full max-w-xl mx-auto">
@@ -266,7 +261,9 @@ export default function FileImporter({ onTotals }) {
           relative flex flex-col items-center justify-center gap-3
           rounded-2xl border-2 border-dashed p-10 cursor-pointer
           transition-all duration-200
-          ${dragging ? 'border-indigo-500 bg-indigo-50 scale-[1.02]' : statusColors[status]}
+          ${dragging
+            ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950 scale-[1.02]'
+            : statusColors[status]}
         `}
       >
         <input
@@ -277,7 +274,6 @@ export default function FileImporter({ onTotals }) {
           className="hidden"
         />
 
-        {/* Ícone */}
         <div className="text-4xl">
           {status === 'loading' && '⏳'}
           {status === 'success' && '✅'}
@@ -285,13 +281,13 @@ export default function FileImporter({ onTotals }) {
           {(status === 'idle' || dragging) && '📂'}
         </div>
 
-        <p className="text-gray-600 text-center text-sm font-medium">
+        <p className="text-gray-600 dark:text-gray-300 text-center text-sm font-medium">
           {status === 'loading'
             ? 'Processando arquivo...'
             : 'Arraste um arquivo aqui ou clique para selecionar'}
         </p>
 
-        <span className="text-xs text-gray-400">CSV, XLSX ou XML</span>
+        <span className="text-xs text-gray-400 dark:text-gray-500">CSV, XLSX ou XML</span>
       </div>
 
       {/* Mensagem de status */}
@@ -299,14 +295,13 @@ export default function FileImporter({ onTotals }) {
         <div
           className={`mt-4 rounded-xl px-4 py-3 text-sm ${
             status === 'error'
-              ? 'bg-red-50 text-red-700 border border-red-200'
-              : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+              ? 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-800'
+              : 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-800'
           }`}
         >
           {message}
         </div>
       )}
-
     </div>
   )
 }

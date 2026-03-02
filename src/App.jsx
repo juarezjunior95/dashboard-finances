@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import FileImporter from './components/FileImporter'
 import Dashboard from './components/Dashboard'
+import DarkToggle from './components/DarkToggle'
+import { useDarkMode } from './hooks/useDarkMode'
 
 const STORAGE_KEY = 'dashboard-financas-totals'
 const EMPTY = { receita: 0, fixas: 0, cartao: 0, invest: 0 }
@@ -31,11 +33,11 @@ const BRL_FMT = (v) =>
 function InputField({ label, name, value, onChange, color }) {
   return (
     <div>
-      <label htmlFor={name} className="block text-xs font-semibold text-gray-500 mb-1">
+      <label htmlFor={name} className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">
         {label}
       </label>
       <div className="relative">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-medium text-gray-400">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-medium text-gray-400 dark:text-gray-500">
           R$
         </span>
         <input
@@ -48,6 +50,8 @@ function InputField({ label, name, value, onChange, color }) {
           onChange={onChange}
           placeholder="0,00"
           className={`w-full pl-9 pr-3 py-2.5 rounded-xl border text-sm font-medium
+            bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100
+            placeholder-gray-300 dark:placeholder-gray-600
             focus:outline-none focus:ring-2 transition-shadow
             ${color}`}
         />
@@ -57,6 +61,7 @@ function InputField({ label, name, value, onChange, color }) {
 }
 
 export default function App() {
+  const { dark, toggle } = useDarkMode()
   const [totals, setTotals] = useState(() => loadFromStorage() ?? { ...EMPTY })
   const [showDash, setShowDash] = useState(() => {
     const saved = loadFromStorage()
@@ -90,22 +95,25 @@ export default function App() {
   const hasValues = Object.values(totals).some((v) => v > 0)
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200">
+      <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
         <div className="max-w-5xl mx-auto px-4 py-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">Dashboard de Finanças</h1>
-            <p className="text-sm text-gray-500">Importe ou digite seus dados financeiros</p>
+            <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Dashboard de Finanças</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Importe ou digite seus dados financeiros</p>
           </div>
-          {showDash && (
-            <button
-              onClick={handleReset}
-              className="text-sm text-gray-500 hover:text-red-600 transition-colors cursor-pointer"
-            >
-              Limpar dados
-            </button>
-          )}
+          <div className="flex items-center gap-4">
+            <DarkToggle dark={dark} onToggle={toggle} />
+            {showDash && (
+              <button
+                onClick={handleReset}
+                className="text-sm text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 transition-colors cursor-pointer"
+              >
+                Limpar dados
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -113,47 +121,47 @@ export default function App() {
         {/* Import + Manual inputs */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* File Importer */}
-          <div className="bg-white rounded-2xl border border-gray-200 p-6">
-            <h2 className="text-sm font-semibold text-gray-500 mb-4">Importar arquivo</h2>
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+            <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-4">Importar arquivo</h2>
             <FileImporter onTotals={handleImport} />
           </div>
 
           {/* Manual inputs */}
-          <div className="bg-white rounded-2xl border border-gray-200 p-6">
-            <h2 className="text-sm font-semibold text-gray-500 mb-4">Entrada manual</h2>
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+            <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-4">Entrada manual</h2>
             <div className="grid grid-cols-2 gap-4">
               <InputField
                 label="Receita"
                 name="receita"
                 value={totals.receita}
                 onChange={handleInputChange}
-                color="border-emerald-200 focus:ring-emerald-400"
+                color="border-emerald-200 dark:border-emerald-800 focus:ring-emerald-400"
               />
               <InputField
                 label="Despesas Fixas"
                 name="fixas"
                 value={totals.fixas}
                 onChange={handleInputChange}
-                color="border-rose-200 focus:ring-rose-400"
+                color="border-rose-200 dark:border-rose-800 focus:ring-rose-400"
               />
               <InputField
                 label="Cartão"
                 name="cartao"
                 value={totals.cartao}
                 onChange={handleInputChange}
-                color="border-orange-200 focus:ring-orange-400"
+                color="border-orange-200 dark:border-orange-800 focus:ring-orange-400"
               />
               <InputField
                 label="Investimentos"
                 name="invest"
                 value={totals.invest}
                 onChange={handleInputChange}
-                color="border-indigo-200 focus:ring-indigo-400"
+                color="border-indigo-200 dark:border-indigo-800 focus:ring-indigo-400"
               />
             </div>
 
             <div className="mt-5 flex items-center justify-between">
-              <span className="text-xs text-gray-400">
+              <span className="text-xs text-gray-400 dark:text-gray-500">
                 {hasValues
                   ? `Total: ${BRL_FMT(totals.receita)} receita`
                   : 'Preencha os campos acima'}
@@ -161,7 +169,7 @@ export default function App() {
               <button
                 onClick={handleApplyManual}
                 disabled={!hasValues}
-                className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed
+                className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed
                   text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors cursor-pointer"
               >
                 Aplicar
@@ -177,6 +185,7 @@ export default function App() {
             fixas={totals.fixas}
             cartao={totals.cartao}
             invest={totals.invest}
+            dark={dark}
           />
         )}
       </main>
