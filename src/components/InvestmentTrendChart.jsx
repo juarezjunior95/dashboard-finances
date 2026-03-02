@@ -1,6 +1,8 @@
 import { useMemo } from 'react'
 import {
   Chart as ChartJS,
+  BarController,
+  LineController,
   CategoryScale,
   LinearScale,
   BarElement,
@@ -14,6 +16,7 @@ import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
 ChartJS.register(
+  BarController, LineController,
   CategoryScale, LinearScale, BarElement, LineElement, PointElement, Tooltip, Legend,
 )
 
