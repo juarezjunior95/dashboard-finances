@@ -8,6 +8,8 @@ const ACCEPTED = '.csv,.xlsx,.xls,.xml'
 const CATEGORY_MAP = {
   fixa: 'fixas',
   fixas: 'fixas',
+  'conta fixa': 'fixas',
+  'contas fixas': 'fixas',
   'despesa fixa': 'fixas',
   'despesas fixas': 'fixas',
   cartao: 'cartao',
