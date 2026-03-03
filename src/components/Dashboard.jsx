@@ -92,7 +92,25 @@ function DeltaBadge({ current, previous, invertColor = false }) {
   )
 }
 
-function KpiCard({ label, value, percent, color, dark, prevValue, invertColor }) {
+function BudgetAlert({ alert }) {
+  if (!alert) return null
+  const isExceeded = alert.level === 'exceeded'
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 text-[9px] sm:text-[10px] font-semibold ${
+        isExceeded ? 'text-red-500 dark:text-red-400' : 'text-amber-500 dark:text-amber-400'
+      }`}
+      title={isExceeded ? 'Limite ultrapassado' : 'Proximo do limite'}
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+      </svg>
+      {alert.pct.toFixed(0)}%
+    </span>
+  )
+}
+
+function KpiCard({ label, value, percent, color, dark, prevValue, invertColor, budgetAlert }) {
   return (
     <div
       className="rounded-2xl border p-3 sm:p-5 flex flex-col gap-0.5 sm:gap-1"
@@ -101,9 +119,12 @@ function KpiCard({ label, value, percent, color, dark, prevValue, invertColor })
         borderColor: `${color.bg}${dark ? '50' : '30'}`,
       }}
     >
-      <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wide opacity-60 text-gray-700 dark:text-gray-300">
-        {label}
-      </span>
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wide opacity-60 text-gray-700 dark:text-gray-300">
+          {label}
+        </span>
+        <BudgetAlert alert={budgetAlert} />
+      </div>
       <div className="flex items-center gap-1.5">
         <span className="text-lg sm:text-2xl font-bold" style={{ color: color.bg }}>
           {formatBRL(value)}
@@ -119,7 +140,7 @@ function KpiCard({ label, value, percent, color, dark, prevValue, invertColor })
 
 // ── Dashboard ────────────────────────────────────────────
 
-export default function Dashboard({ receita, fixas, cartao, invest, prevTotals, dark }) {
+export default function Dashboard({ receita, fixas, cartao, invest, prevTotals, budgetAlerts = {}, dark }) {
   const total = receita || 1
   const saldoReal = receita - fixas - cartao - invest
   const saldoGrafico = Math.max(saldoReal, 0)
@@ -254,11 +275,11 @@ export default function Dashboard({ receita, fixas, cartao, invest, prevTotals, 
         <KpiCard label={LABELS.receita} value={receita} percent={pct.receita} color={COLORS.receita} dark={dark}
           prevValue={prevTotals?.receita} invertColor={false} />
         <KpiCard label={LABELS.fixas} value={fixas} percent={pct.fixas} color={COLORS.fixas} dark={dark}
-          prevValue={prevTotals?.fixas} invertColor={true} />
+          prevValue={prevTotals?.fixas} invertColor={true} budgetAlert={budgetAlerts.fixas} />
         <KpiCard label={LABELS.cartao} value={cartao} percent={pct.cartao} color={COLORS.cartao} dark={dark}
-          prevValue={prevTotals?.cartao} invertColor={true} />
+          prevValue={prevTotals?.cartao} invertColor={true} budgetAlert={budgetAlerts.cartao} />
         <KpiCard label={LABELS.invest} value={invest} percent={pct.invest} color={COLORS.invest} dark={dark}
-          prevValue={prevTotals?.invest} invertColor={false} />
+          prevValue={prevTotals?.invest} invertColor={false} budgetAlert={budgetAlerts.invest} />
       </div>
 
       {/* Saldo */}

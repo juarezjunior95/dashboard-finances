@@ -6,6 +6,7 @@ import DarkToggle from './components/DarkToggle'
 import Login from './components/Login'
 import MonthSelector from './components/MonthSelector'
 import InvestmentPlanner from './components/InvestmentPlanner'
+import BudgetProgress from './components/BudgetProgress'
 import { useDarkMode } from './hooks/useDarkMode'
 import { useAuth } from './contexts/AuthContext'
 import { getSnapshot, upsertSnapshot, listMonths } from './services/snapshotService'
@@ -75,6 +76,7 @@ export default function App() {
   const [showDash, setShowDash] = useState(false)
   const [monthLoading, setMonthLoading] = useState(true)
   const [saveStatus, setSaveStatus] = useState(null)
+  const [budgetAlerts, setBudgetAlerts] = useState({})
 
   const totalsRef = useRef(totals)
   const saveTimer = useRef(null)
@@ -366,9 +368,13 @@ export default function App() {
                 cartao={totals.cartao}
                 invest={totals.invest}
                 prevTotals={prevTotals}
+                budgetAlerts={budgetAlerts}
                 dark={dark}
               />
             )}
+
+            {/* Limites por categoria */}
+            <BudgetProgress totals={totals} onBudgetAlerts={setBudgetAlerts} />
 
             {/* Planejamento de Investimentos */}
             <InvestmentPlanner dark={dark} />
