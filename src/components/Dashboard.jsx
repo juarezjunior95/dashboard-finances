@@ -9,6 +9,8 @@ import {
   Legend,
 } from 'chart.js'
 import { Doughnut, Bar } from 'react-chartjs-2'
+import { analyzeFinances } from '../utils/financialRules'
+import FinancialInsights from './FinancialInsights'
 
 ChartJS.register(ArcElement, CategoryScale, LinearScale, BarElement, Tooltip, Legend)
 
@@ -110,7 +112,25 @@ function BudgetAlert({ alert }) {
   )
 }
 
-function KpiCard({ label, value, percent, color, dark, prevValue, invertColor, budgetAlert }) {
+function RuleHint({ rule }) {
+  if (!rule) return null
+  const statusColor = {
+    excellent: 'text-emerald-600 dark:text-emerald-400',
+    ok: 'text-blue-600 dark:text-blue-400',
+    warning: 'text-amber-600 dark:text-amber-400',
+    danger: 'text-red-600 dark:text-red-400',
+  }
+  const idealLabel = rule.direction === 'max'
+    ? `ideal: ate ${rule.idealPct}%`
+    : `ideal: min ${rule.idealPct}%`
+  return (
+    <span className={`text-[9px] sm:text-[10px] font-semibold ${statusColor[rule.status] || ''}`}>
+      ({idealLabel})
+    </span>
+  )
+}
+
+function KpiCard({ label, value, percent, color, dark, prevValue, invertColor, budgetAlert, rule }) {
   return (
     <div
       className="rounded-2xl border p-3 sm:p-5 flex flex-col gap-0.5 sm:gap-1"
@@ -131,9 +151,12 @@ function KpiCard({ label, value, percent, color, dark, prevValue, invertColor, b
         </span>
         <DeltaBadge current={value} previous={prevValue} invertColor={invertColor} />
       </div>
-      <span className="text-[10px] sm:text-xs font-medium" style={{ color: color.bg }}>
-        {percent}% da receita
-      </span>
+      <div className="flex items-center gap-1 flex-wrap">
+        <span className="text-[10px] sm:text-xs font-medium" style={{ color: color.bg }}>
+          {percent}% da receita
+        </span>
+        <RuleHint rule={rule} />
+      </div>
     </div>
   )
 }
@@ -156,6 +179,17 @@ export default function Dashboard({ receita, fixas, cartao, invest, prevTotals, 
     }),
     [receita, fixas, cartao, invest, total, saldoGrafico],
   )
+
+  const analysis = useMemo(
+    () => analyzeFinances({ receita, fixas, cartao, invest }),
+    [receita, fixas, cartao, invest],
+  )
+
+  const ruleMap = useMemo(() => {
+    const map = {}
+    for (const r of analysis.rules) map[r.category] = r
+    return map
+  }, [analysis])
 
   const textColor = dark ? '#e5e7eb' : '#374151'
   const gridColor = dark ? '#374151' : '#f3f4f6'
@@ -275,12 +309,15 @@ export default function Dashboard({ receita, fixas, cartao, invest, prevTotals, 
         <KpiCard label={LABELS.receita} value={receita} percent={pct.receita} color={COLORS.receita} dark={dark}
           prevValue={prevTotals?.receita} invertColor={false} />
         <KpiCard label={LABELS.fixas} value={fixas} percent={pct.fixas} color={COLORS.fixas} dark={dark}
-          prevValue={prevTotals?.fixas} invertColor={true} budgetAlert={budgetAlerts.fixas} />
+          prevValue={prevTotals?.fixas} invertColor={true} budgetAlert={budgetAlerts.fixas} rule={ruleMap.fixas} />
         <KpiCard label={LABELS.cartao} value={cartao} percent={pct.cartao} color={COLORS.cartao} dark={dark}
-          prevValue={prevTotals?.cartao} invertColor={true} budgetAlert={budgetAlerts.cartao} />
+          prevValue={prevTotals?.cartao} invertColor={true} budgetAlert={budgetAlerts.cartao} rule={ruleMap.cartao} />
         <KpiCard label={LABELS.invest} value={invest} percent={pct.invest} color={COLORS.invest} dark={dark}
-          prevValue={prevTotals?.invest} invertColor={false} budgetAlert={budgetAlerts.invest} />
+          prevValue={prevTotals?.invest} invertColor={false} budgetAlert={budgetAlerts.invest} rule={ruleMap.invest} />
       </div>
+
+      {/* Insights financeiros */}
+      <FinancialInsights analysis={analysis} />
 
       {/* Saldo */}
       <div
