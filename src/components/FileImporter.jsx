@@ -1,12 +1,13 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
 import { toNumberBR } from '../utils/toNumberBR'
 import { bulkInsertTransactions } from '../services/transactionService'
+import { listCategories } from '../services/categoryService'
 
 const ACCEPTED = '.csv,.xlsx,.xls,.xml'
 
-const CATEGORY_MAP = {
+const BASE_CATEGORY_MAP = {
   fixa: 'fixas',
   fixas: 'fixas',
   'conta fixa': 'fixas',
@@ -31,9 +32,20 @@ const CATEGORY_MAP = {
   salário: 'receita',
 }
 
-function normalizeCategory(raw) {
+function buildCategoryMap(userCategories) {
+  const map = { ...BASE_CATEGORY_MAP }
+  for (const cat of userCategories) {
+    if (!cat.is_default) {
+      map[cat.key] = cat.key
+      map[cat.label.toLowerCase()] = cat.key
+    }
+  }
+  return map
+}
+
+function normalizeCategoryWith(raw, catMap) {
   const key = String(raw ?? '').trim().toLowerCase()
-  return CATEGORY_MAP[key] ?? null
+  return catMap[key] ?? null
 }
 
 function findColumns(headers) {
@@ -70,8 +82,8 @@ function tryParseDate(raw) {
   return null
 }
 
-function normalizeRows(rawRows) {
-  if (!rawRows.length) return []
+function normalizeRows(rawRows, catMap) {
+  if (!rawRows.length) return { rows: [], unmapped: {} }
 
   const headers = rawRows[0]
   const { catIdx, valIdx, dateIdx, descIdx } = findColumns(headers)
@@ -85,30 +97,46 @@ function normalizeRows(rawRows) {
   }
 
   const rows = []
+  const unmapped = {}
+
   for (let i = 1; i < rawRows.length; i++) {
     const row = rawRows[i]
     if (!row || row.every((c) => c == null || String(c).trim() === '')) continue
 
-    const categoria = normalizeCategory(row[catIdx])
+    const rawCat = String(row[catIdx] ?? '').trim()
+    const categoria = normalizeCategoryWith(rawCat, catMap)
     const valor = toNumberBR(row[valIdx])
 
-    if (categoria === null) continue
     if (Number.isNaN(valor)) continue
 
-    const descricao = descIdx !== -1 ? String(row[descIdx] ?? '').trim() : String(row[catIdx] ?? '').trim()
+    const descricao = descIdx !== -1 ? String(row[descIdx] ?? '').trim() : rawCat
     const data = dateIdx !== -1 ? tryParseDate(row[dateIdx]) : null
+
+    if (categoria === null) {
+      const key = rawCat.toLowerCase()
+      if (key) {
+        if (!unmapped[key]) unmapped[key] = { original: rawCat, count: 0, rows: [] }
+        unmapped[key].count++
+        unmapped[key].rows.push({ valor, descricao, data, rawIdx: i })
+      }
+      continue
+    }
 
     rows.push({ categoria, valor, descricao, data })
   }
 
-  return rows
+  return { rows, unmapped }
 }
 
-function computeTotals(rows) {
+function computeTotals(rows, userCategories) {
   const totals = { fixas: 0, cartao: 0, invest: 0, receita: 0 }
+  const catLookup = new Map()
+  for (const c of userCategories) catLookup.set(c.key, c.parent_category)
+
   for (const { categoria, valor } of rows) {
-    if (categoria in totals) {
-      totals[categoria] += valor
+    const parent = catLookup.get(categoria) || categoria
+    if (parent in totals) {
+      totals[parent] += valor
     }
   }
   return totals
@@ -203,18 +231,105 @@ function getParser(fileName) {
   return null
 }
 
+// ── Mapping panel for unrecognized categories ───────────
+
+function MappingPanel({ unmapped, allCategories, onApply, onCancel }) {
+  const [mapping, setMapping] = useState(() => {
+    const m = {}
+    for (const key of Object.keys(unmapped)) m[key] = ''
+    return m
+  })
+
+  const allReady = Object.values(mapping).every(v => v !== '')
+
+  return (
+    <div className="mt-3 space-y-3 p-3 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950">
+      <div className="flex items-center gap-2">
+        <span className="text-sm">⚠️</span>
+        <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+          Categorias não reconhecidas
+        </p>
+      </div>
+      <p className="text-[11px] text-amber-700 dark:text-amber-400">
+        Mapeie cada categoria para uma existente antes de importar:
+      </p>
+      <div className="space-y-2">
+        {Object.entries(unmapped).map(([key, info]) => (
+          <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+            <span className="text-xs text-gray-700 dark:text-gray-300 font-medium min-w-[120px]">
+              &quot;{info.original}&quot; <span className="text-gray-400">({info.count}x)</span>
+            </span>
+            <svg className="hidden sm:block w-3 h-3 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
+            <select
+              value={mapping[key]}
+              onChange={e => setMapping(p => ({ ...p, [key]: e.target.value }))}
+              className="flex-1 px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-400 focus:outline-none"
+            >
+              <option value="">Selecione...</option>
+              {allCategories.map(c => (
+                <option key={c.key} value={c.key}>{c.icon} {c.label}</option>
+              ))}
+            </select>
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2 pt-1">
+        <button onClick={() => onApply(mapping)} disabled={!allReady}
+          className="px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed">
+          Aplicar mapeamento
+        </button>
+        <button onClick={onCancel}
+          className="px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors cursor-pointer">
+          Cancelar
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Componente ───────────────────────────────────────────
 
 export default function FileImporter({ onTotals, month }) {
   const [status, setStatus] = useState('idle')
   const [message, setMessage] = useState('')
   const [dragging, setDragging] = useState(false)
+  const [userCategories, setUserCategories] = useState([])
+  const [pendingUnmapped, setPendingUnmapped] = useState(null)
+  const [pendingRows, setPendingRows] = useState(null)
+  const [pendingFile, setPendingFile] = useState(null)
   const inputRef = useRef(null)
+
+  useEffect(() => {
+    listCategories().then(setUserCategories).catch(() => {})
+  }, [])
+
+  const finishImport = useCallback(async (allRows, fileName) => {
+    const totals = computeTotals(allRows, userCategories)
+
+    if (month) {
+      await bulkInsertTransactions(month, allRows.map(row => ({
+        category: row.categoria,
+        description: row.descricao || '',
+        amount: row.valor,
+        date: row.data || null,
+        source: 'import',
+      })))
+    }
+
+    setStatus('success')
+    setMessage(`${allRows.length} lançamento(s) importado(s) de "${fileName}"`)
+    onTotals?.(totals)
+  }, [onTotals, month, userCategories])
 
   const processFile = useCallback(
     async (file) => {
       setStatus('loading')
       setMessage('')
+      setPendingUnmapped(null)
+      setPendingRows(null)
+      setPendingFile(null)
 
       try {
         const parser = getParser(file.name)
@@ -225,36 +340,58 @@ export default function FileImporter({ onTotals, month }) {
         }
 
         const rawData = await parser(file)
-        const normalized = normalizeRows(rawData)
+        const catMap = buildCategoryMap(userCategories)
+        const { rows, unmapped } = normalizeRows(rawData, catMap)
 
-        if (normalized.length === 0) {
+        const unmappedKeys = Object.keys(unmapped)
+        if (unmappedKeys.length > 0) {
+          setPendingRows(rows)
+          setPendingUnmapped(unmapped)
+          setPendingFile(file.name)
+          setStatus('idle')
+          return
+        }
+
+        if (rows.length === 0) {
           throw new Error(
             'Nenhuma linha válida encontrada. Verifique se as categorias correspondem a: fixas, cartão, investimento ou receita.',
           )
         }
 
-        const totals = computeTotals(normalized)
-
-        if (month) {
-          await bulkInsertTransactions(month, normalized.map(row => ({
-            category: row.categoria,
-            description: row.descricao || '',
-            amount: row.valor,
-            date: row.data || null,
-            source: 'import',
-          })))
-        }
-
-        setStatus('success')
-        setMessage(`${normalized.length} lançamento(s) importado(s) de "${file.name}"`)
-        onTotals?.(totals)
+        await finishImport(rows, file.name)
       } catch (err) {
         setStatus('error')
         setMessage(err.message)
       }
     },
-    [onTotals, month],
+    [onTotals, month, userCategories, finishImport],
   )
+
+  const handleApplyMapping = useCallback(async (mapping) => {
+    if (!pendingUnmapped || !pendingRows) return
+    setStatus('loading')
+    try {
+      const extraRows = []
+      for (const [key, info] of Object.entries(pendingUnmapped)) {
+        const target = mapping[key]
+        if (!target) continue
+        for (const r of info.rows) {
+          extraRows.push({ categoria: target, valor: r.valor, descricao: r.descricao, data: r.data })
+        }
+      }
+      const allRows = [...pendingRows, ...extraRows]
+      if (allRows.length === 0) {
+        throw new Error('Nenhuma linha válida após o mapeamento.')
+      }
+      await finishImport(allRows, pendingFile || 'arquivo')
+      setPendingUnmapped(null)
+      setPendingRows(null)
+      setPendingFile(null)
+    } catch (err) {
+      setStatus('error')
+      setMessage(err.message)
+    }
+  }, [pendingUnmapped, pendingRows, pendingFile, finishImport])
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0]
@@ -326,6 +463,16 @@ export default function FileImporter({ onTotals, month }) {
 
         <span className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">CSV, XLSX ou XML</span>
       </div>
+
+      {/* Mapping panel for unrecognized categories */}
+      {pendingUnmapped && (
+        <MappingPanel
+          unmapped={pendingUnmapped}
+          allCategories={userCategories}
+          onApply={handleApplyMapping}
+          onCancel={() => { setPendingUnmapped(null); setPendingRows(null); setPendingFile(null) }}
+        />
+      )}
 
       {/* Mensagem de status */}
       {message && (

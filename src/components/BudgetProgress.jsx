@@ -2,10 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { getBudgets, upsertBudget } from '../services/budgetService'
 import { useToast } from '../contexts/ToastContext'
 import { SkeletonBudgetProgress } from './Skeleton'
+import CategoryManager from './CategoryManager'
 
 const BRL = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-const CATEGORIES = [
+const DEFAULT_BUDGET_CATS = [
   { key: 'fixas', label: 'Contas Fixas', color: 'rose' },
   { key: 'cartao', label: 'Cartao', color: 'orange' },
   { key: 'invest', label: 'Investimentos', color: 'indigo' },
@@ -28,12 +29,17 @@ const SMALL_INPUT_CLS = `w-28 px-2 py-1.5 rounded-lg border border-gray-200 dark
   bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 text-xs text-right
   focus:outline-none focus:ring-2 focus:ring-indigo-400`
 
-export default function BudgetProgress({ totals, onBudgetAlerts }) {
+export default function BudgetProgress({ totals, onBudgetAlerts, categories, onCategoriesChanged }) {
   const [budgets, setBudgets] = useState([])
   const [editValues, setEditValues] = useState({})
   const [loading, setLoading] = useState(true)
+  const [showManager, setShowManager] = useState(false)
   const saveTimers = useRef({})
   const { showToast } = useToast()
+
+  const budgetCats = categories
+    ? categories.filter(c => c.parent_category !== 'receita')
+    : DEFAULT_BUDGET_CATS
 
   useEffect(() => () => {
     Object.values(saveTimers.current).forEach(clearTimeout)
@@ -51,11 +57,10 @@ export default function BudgetProgress({ totals, onBudgetAlerts }) {
 
   useEffect(() => { load() }, [load])
 
-  // Notify parent about alerts for KPI integration
   useEffect(() => {
     if (!onBudgetAlerts) return
     const alerts = {}
-    for (const cat of CATEGORIES) {
+    for (const cat of budgetCats) {
       const budget = budgets.find(b => b.category === cat.key)
       if (!budget || !budget.limit_amount) continue
       const spent = totals[cat.key] || 0
@@ -64,7 +69,7 @@ export default function BudgetProgress({ totals, onBudgetAlerts }) {
       if (level) alerts[cat.key] = { pct, level }
     }
     onBudgetAlerts(alerts)
-  }, [budgets, totals, onBudgetAlerts])
+  }, [budgets, totals, onBudgetAlerts, budgetCats])
 
   const handleChange = (category, rawValue) => {
     setEditValues(prev => ({ ...prev, [category]: rawValue }))
@@ -108,12 +113,28 @@ export default function BudgetProgress({ totals, onBudgetAlerts }) {
 
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-6 space-y-4">
-      <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400">
-        Limites por Categoria
-      </h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400">
+          Limites por Categoria
+        </h2>
+        <button onClick={() => setShowManager(s => !s)}
+          className="text-[10px] sm:text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 cursor-pointer flex items-center gap-1">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          Categorias
+        </button>
+      </div>
+
+      {showManager && (
+        <div className="border-t border-gray-100 dark:border-gray-800 pt-4">
+          <CategoryManager onCategoriesChanged={onCategoriesChanged} />
+        </div>
+      )}
 
       <div className="space-y-4">
-        {CATEGORIES.map(cat => {
+        {budgetCats.map(cat => {
           const budget = budgets.find(b => b.category === cat.key)
           const limit = budget?.limit_amount || 0
           const spent = totals[cat.key] || 0
@@ -127,7 +148,7 @@ export default function BudgetProgress({ totals, onBudgetAlerts }) {
             <div key={cat.key} className="space-y-1.5">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {cat.label}
+                  {cat.icon ? `${cat.icon} ` : ''}{cat.label}
                 </span>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">Limite:</span>
@@ -147,7 +168,6 @@ export default function BudgetProgress({ totals, onBudgetAlerts }) {
                 </div>
               </div>
 
-              {/* Progress bar */}
               {limit > 0 && hasAnyValue && (
                 <>
                   <div className="flex items-center gap-2">
@@ -186,7 +206,7 @@ export default function BudgetProgress({ totals, onBudgetAlerts }) {
         })}
       </div>
 
-      {!hasAnyBudget && (
+      {!hasAnyBudget && !showManager && (
         <p className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500 text-center">
           Defina limites acima para acompanhar seus gastos por categoria.
         </p>

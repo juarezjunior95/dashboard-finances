@@ -6,18 +6,32 @@ import {
   upsertTransaction,
   deleteTransaction,
   getTransactionTotals,
+  getDetailedTransactionTotals,
 } from '../services/transactionService'
 import { useToast } from '../contexts/ToastContext'
+import { COLOR_MAP } from '../services/categoryService'
 import ConfirmModal from './ConfirmModal'
 
-const CATEGORIES = [
-  { value: 'fixas', label: 'Contas Fixas', badge: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400' },
-  { value: 'cartao', label: 'Cartão', badge: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400' },
-  { value: 'invest', label: 'Investimentos', badge: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400' },
-  { value: 'receita', label: 'Receita', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' },
+const FALLBACK_CATEGORIES = [
+  { key: 'fixas', label: 'Contas Fixas', color: 'rose', parent_category: 'fixas' },
+  { key: 'cartao', label: 'Cartão', color: 'orange', parent_category: 'cartao' },
+  { key: 'invest', label: 'Investimentos', color: 'indigo', parent_category: 'invest' },
+  { key: 'receita', label: 'Receita', color: 'emerald', parent_category: 'receita' },
 ]
 
-const CAT_MAP = Object.fromEntries(CATEGORIES.map(c => [c.value, c]))
+function buildCatLookup(categories) {
+  const map = {}
+  for (const c of (categories || FALLBACK_CATEGORIES)) {
+    const bg = COLOR_MAP[c.color] || '#6b7280'
+    map[c.key] = {
+      label: c.label,
+      parent: c.parent_category,
+      badge: `bg-[${bg}]/10 text-[${bg}]`,
+      bgColor: bg,
+    }
+  }
+  return map
+}
 
 const BRL = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -31,15 +45,17 @@ function formatDate(d) {
   }
 }
 
-function valueColor(category) {
-  if (category === 'receita') return 'text-emerald-600 dark:text-emerald-400'
-  if (category === 'invest') return 'text-indigo-600 dark:text-indigo-400'
+function valueColor(category, catLookup) {
+  const info = catLookup[category]
+  const parent = info?.parent || category
+  if (parent === 'receita') return 'text-emerald-600 dark:text-emerald-400'
+  if (parent === 'invest') return 'text-indigo-600 dark:text-indigo-400'
   return 'text-red-600 dark:text-red-400'
 }
 
 const EMPTY_FORM = { date: '', description: '', category: 'fixas', amount: '' }
 
-function TransactionForm({ initial, onSave, onCancel, saving }) {
+function TransactionForm({ initial, onSave, onCancel, saving, allCategories }) {
   const [form, setForm] = useState(() => ({
     date: initial?.date || '',
     description: initial?.description || '',
@@ -63,6 +79,12 @@ function TransactionForm({ initial, onSave, onCancel, saving }) {
     })
   }
 
+  const parents = ['receita', 'fixas', 'cartao', 'invest']
+  const grouped = parents.map(p => ({
+    parent: p,
+    items: (allCategories || FALLBACK_CATEGORIES).filter(c => c.parent_category === p),
+  }))
+
   return (
     <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row items-stretch sm:items-end gap-2 sm:gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
       <div className="flex-1 min-w-0">
@@ -75,11 +97,15 @@ function TransactionForm({ initial, onSave, onCancel, saving }) {
         <input type="text" name="description" value={form.description} onChange={handleChange} placeholder="Ex: Aluguel"
           className="w-full px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
       </div>
-      <div className="w-full sm:w-32">
+      <div className="w-full sm:w-40">
         <label className="block text-[10px] font-semibold text-gray-500 dark:text-gray-400 mb-0.5">Categoria</label>
         <select name="category" value={form.category} onChange={handleChange}
           className="w-full px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:outline-none">
-          {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+          {grouped.map(g => (
+            <optgroup key={g.parent} label={g.items.find(c => c.is_default)?.label || g.parent}>
+              {g.items.map(c => <option key={c.key} value={c.key}>{c.icon ? `${c.icon} ` : ''}{c.label}</option>)}
+            </optgroup>
+          ))}
         </select>
       </div>
       <div className="w-full sm:w-28">
@@ -101,20 +127,23 @@ function TransactionForm({ initial, onSave, onCancel, saving }) {
   )
 }
 
-function MobileCard({ tx, onEdit, onDelete }) {
-  const cat = CAT_MAP[tx.category] || CAT_MAP.fixas
+function MobileCard({ tx, onEdit, onDelete, catLookup }) {
+  const cat = catLookup[tx.category] || catLookup.fixas || { label: tx.category, bgColor: '#6b7280' }
   return (
     <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800">
       <div className="flex-1 min-w-0 space-y-1">
         <div className="flex items-center gap-2">
-          <span className={`inline-block px-2 py-0.5 text-[10px] font-semibold rounded-full ${cat.badge}`}>{cat.label}</span>
+          <span className="inline-block px-2 py-0.5 text-[10px] font-semibold rounded-full"
+            style={{ backgroundColor: `${cat.bgColor}18`, color: cat.bgColor }}>
+            {cat.label}
+          </span>
           <span className="text-[10px] text-gray-400 dark:text-gray-500">{formatDate(tx.date)}</span>
         </div>
         <p className="text-xs text-gray-700 dark:text-gray-300 truncate" title={tx.description}>
           {tx.description || '—'}
         </p>
       </div>
-      <span className={`text-sm font-bold tabular-nums shrink-0 ${valueColor(tx.category)}`}>
+      <span className={`text-sm font-bold tabular-nums shrink-0 ${valueColor(tx.category, catLookup)}`}>
         {BRL(tx.amount)}
       </span>
       <div className="flex gap-1 shrink-0">
@@ -131,7 +160,7 @@ function MobileCard({ tx, onEdit, onDelete }) {
 
 const PAGE_SIZE = 50
 
-export default function TransactionList({ month, onTotalsChanged }) {
+export default function TransactionList({ month, onTotalsChanged, onDetailedTotals, categories }) {
   const { showToast } = useToast()
   const [transactions, setTransactions] = useState([])
   const [loading, setLoading] = useState(true)
@@ -143,6 +172,9 @@ export default function TransactionList({ month, onTotalsChanged }) {
   const [filterCat, setFilterCat] = useState('all')
   const [search, setSearch] = useState('')
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+
+  const catLookup = useMemo(() => buildCatLookup(categories), [categories])
+  const allCats = categories || FALLBACK_CATEGORIES
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -173,10 +205,12 @@ export default function TransactionList({ month, onTotalsChanged }) {
     try {
       const totals = await getTransactionTotals(month)
       onTotalsChanged?.(totals)
+      const detailed = await getDetailedTransactionTotals(month)
+      onDetailedTotals?.(detailed)
     } catch {
       showToast({ type: 'error', message: 'Erro ao recalcular totais.' })
     }
-  }, [month, onTotalsChanged, showToast])
+  }, [month, onTotalsChanged, onDetailedTotals, showToast])
 
   const handleSaveNew = useCallback(async (formData) => {
     setSaving(true)
@@ -291,6 +325,7 @@ export default function TransactionList({ month, onTotalsChanged }) {
               onSave={handleSaveNew}
               onCancel={() => setAdding(false)}
               saving={saving}
+              allCategories={allCats}
             />
           )}
 
@@ -300,7 +335,7 @@ export default function TransactionList({ month, onTotalsChanged }) {
               <select value={filterCat} onChange={e => { setFilterCat(e.target.value); setVisibleCount(PAGE_SIZE) }}
                 className="px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-400 focus:outline-none">
                 <option value="all">Todas</option>
-                {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                {allCats.map(c => <option key={c.key} value={c.key}>{c.icon ? `${c.icon} ` : ''}{c.label}</option>)}
               </select>
               <div className="relative flex-1">
                 <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -346,12 +381,13 @@ export default function TransactionList({ month, onTotalsChanged }) {
                               onSave={handleSaveEdit}
                               onCancel={() => setEditId(null)}
                               saving={saving}
+                              allCategories={allCats}
                             />
                           </td>
                         </tr>
                       )
                     }
-                    const cat = CAT_MAP[tx.category] || CAT_MAP.fixas
+                    const cat = catLookup[tx.category] || catLookup.fixas || { label: tx.category, bgColor: '#6b7280' }
                     return (
                       <tr key={tx.id} className="border-b border-gray-50 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
                         <td className="py-2 text-gray-500 dark:text-gray-400">{formatDate(tx.date)}</td>
@@ -359,9 +395,12 @@ export default function TransactionList({ month, onTotalsChanged }) {
                           {tx.description || '—'}
                         </td>
                         <td className="py-2">
-                          <span className={`inline-block px-2 py-0.5 text-[10px] font-semibold rounded-full ${cat.badge}`}>{cat.label}</span>
+                          <span className="inline-block px-2 py-0.5 text-[10px] font-semibold rounded-full"
+                            style={{ backgroundColor: `${cat.bgColor}18`, color: cat.bgColor }}>
+                            {cat.label}
+                          </span>
                         </td>
-                        <td className={`py-2 text-right font-bold tabular-nums ${valueColor(tx.category)}`}>
+                        <td className={`py-2 text-right font-bold tabular-nums ${valueColor(tx.category, catLookup)}`}>
                           {BRL(tx.amount)}
                         </td>
                         <td className="py-2 text-right">
@@ -396,6 +435,7 @@ export default function TransactionList({ month, onTotalsChanged }) {
                       onSave={handleSaveEdit}
                       onCancel={() => setEditId(null)}
                       saving={saving}
+                      allCategories={allCats}
                     />
                   )
                 }
@@ -405,6 +445,7 @@ export default function TransactionList({ month, onTotalsChanged }) {
                     tx={tx}
                     onEdit={(t) => { setEditId(t.id); setAdding(false) }}
                     onDelete={(t) => setDeleteTarget(t)}
+                    catLookup={catLookup}
                   />
                 )
               })}
@@ -425,7 +466,7 @@ export default function TransactionList({ month, onTotalsChanged }) {
           {filtered.length > 0 && (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-3 border-t border-gray-100 dark:border-gray-800">
               {Object.entries(filteredTotals).filter(([, v]) => v > 0).map(([cat, val]) => {
-                const info = CAT_MAP[cat]
+                const info = catLookup[cat]
                 if (!info) return null
                 return (
                   <span key={cat} className="text-[10px] text-gray-500 dark:text-gray-400">

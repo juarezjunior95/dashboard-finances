@@ -10,6 +10,7 @@ import {
 } from 'chart.js'
 import { Doughnut, Bar } from 'react-chartjs-2'
 import { analyzeFinances } from '../utils/financialRules'
+import { COLOR_MAP } from '../services/categoryService'
 import FinancialInsights from './FinancialInsights'
 
 ChartJS.register(ArcElement, CategoryScale, LinearScale, BarElement, Tooltip, Legend)
@@ -204,7 +205,7 @@ function KpiCard({ label, value, percent, color, dark, prevValue, invertColor, b
 
 // ── Dashboard ────────────────────────────────────────────
 
-export default function Dashboard({ receita, fixas, cartao, invest, prevTotals, budgetAlerts = {}, dark }) {
+export default function Dashboard({ receita, fixas, cartao, invest, prevTotals, budgetAlerts = {}, dark, categories, transactionTotals }) {
   const total = receita || 1
   const saldoReal = receita - fixas - cartao - invest
   const saldoGrafico = Math.max(saldoReal, 0)
@@ -235,25 +236,74 @@ export default function Dashboard({ receita, fixas, cartao, invest, prevTotals, 
   const textColor = dark ? '#e5e7eb' : '#374151'
   const gridColor = dark ? '#374151' : '#f3f4f6'
 
-  const doughnutData = useMemo(
-    () => ({
-      labels: [LABELS.fixas, LABELS.cartao, LABELS.invest, LABELS.saldo],
-      datasets: [
-        {
-          data: [fixas, cartao, invest, saldoGrafico],
-          backgroundColor: [
-            COLORS.fixas.bg,
-            COLORS.cartao.bg,
-            COLORS.invest.bg,
-            COLORS.saldo.bg,
-          ],
+  const hasSubcategories = useMemo(() => {
+    if (!categories) return false
+    return categories.some(c => !c.is_default)
+  }, [categories])
+
+  const doughnutData = useMemo(() => {
+    if (hasSubcategories && transactionTotals && categories) {
+      const labels = []
+      const data = []
+      const colors = []
+      const parentLabels = []
+
+      const parentOrder = ['fixas', 'cartao', 'invest']
+      for (const parentKey of parentOrder) {
+        const subs = categories.filter(c => c.parent_category === parentKey)
+        for (const sub of subs) {
+          const amount = Number(transactionTotals[sub.key]) || 0
+          if (amount > 0) {
+            labels.push(sub.label)
+            data.push(amount)
+            colors.push(COLOR_MAP[sub.color] || COLORS[parentKey]?.bg || '#6b7280')
+            parentLabels.push(LABELS[parentKey] || parentKey)
+          }
+        }
+        if (subs.length === 0) {
+          const amount = parentKey === 'fixas' ? fixas : parentKey === 'cartao' ? cartao : invest
+          if (amount > 0) {
+            labels.push(LABELS[parentKey])
+            data.push(amount)
+            colors.push(COLORS[parentKey]?.bg || '#6b7280')
+            parentLabels.push(LABELS[parentKey])
+          }
+        }
+      }
+
+      labels.push(LABELS.saldo)
+      data.push(saldoGrafico)
+      colors.push(COLORS.saldo.bg)
+      parentLabels.push('Saldo')
+
+      return {
+        labels,
+        datasets: [{
+          data,
+          backgroundColor: colors,
           borderWidth: 0,
           hoverOffset: 6,
-        },
-      ],
-    }),
-    [fixas, cartao, invest, saldoGrafico],
-  )
+        }],
+        _parentLabels: parentLabels,
+      }
+    }
+
+    return {
+      labels: [LABELS.fixas, LABELS.cartao, LABELS.invest, LABELS.saldo],
+      datasets: [{
+        data: [fixas, cartao, invest, saldoGrafico],
+        backgroundColor: [
+          COLORS.fixas.bg,
+          COLORS.cartao.bg,
+          COLORS.invest.bg,
+          COLORS.saldo.bg,
+        ],
+        borderWidth: 0,
+        hoverOffset: 6,
+      }],
+      _parentLabels: null,
+    }
+  }, [fixas, cartao, invest, saldoGrafico, hasSubcategories, categories, transactionTotals])
 
   const doughnutOpts = useMemo(
     () => ({
@@ -275,7 +325,10 @@ export default function Dashboard({ receita, fixas, cartao, invest, prevTotals, 
             label(ctx) {
               const value = formatBRL(ctx.raw)
               const percent = calcPercent(ctx.raw, receita)
-              return ` ${ctx.label}: ${value} (${percent}%)`
+              const parentLabels = ctx.chart.data._parentLabels
+              const parentLabel = parentLabels?.[ctx.dataIndex]
+              const prefix = parentLabel && parentLabel !== ctx.label ? `${ctx.label} (${parentLabel})` : ctx.label
+              return ` ${prefix}: ${value} (${percent}%)`
             },
           },
         },

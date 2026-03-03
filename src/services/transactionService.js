@@ -189,6 +189,16 @@ export async function getTransactionTotals(month) {
   return totals
 }
 
+export async function getDetailedTransactionTotals(month) {
+  const txs = await listTransactions(month)
+  const totals = {}
+  for (const tx of txs) {
+    if (!totals[tx.category]) totals[tx.category] = 0
+    totals[tx.category] += Number(tx.amount) || 0
+  }
+  return totals
+}
+
 export async function bulkInsertTransactions(month, transactions) {
   if (!/^\d{4}-\d{2}$/.test(month)) {
     throw new Error('Mês inválido. Use YYYY-MM.')

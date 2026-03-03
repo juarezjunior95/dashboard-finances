@@ -15,6 +15,7 @@ import { SkeletonDashboardPage, SkeletonBudgetProgress, SkeletonInvestmentPlanne
 import { useDarkMode } from './hooks/useDarkMode'
 import { useAuth } from './contexts/AuthContext'
 import { getSnapshot, upsertSnapshot, listMonths } from './services/snapshotService'
+import { listCategories } from './services/categoryService'
 import { useToast } from './contexts/ToastContext'
 
 const LEGACY_KEY = 'dashboard-financas-totals'
@@ -85,6 +86,8 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState(null)
   const [budgetAlerts, setBudgetAlerts] = useState({})
   const [confirmReset, setConfirmReset] = useState(false)
+  const [userCategories, setUserCategories] = useState(null)
+  const [txDetailTotals, setTxDetailTotals] = useState(null)
 
   const totalsRef = useRef(totals)
   const saveTimer = useRef(null)
@@ -169,13 +172,21 @@ export default function App() {
     }
   }, [currentMonth, refreshMonths])
 
+  const loadCategories = useCallback(async () => {
+    try {
+      const cats = await listCategories()
+      setUserCategories(cats)
+    } catch { /* fallback handled in service */ }
+  }, [])
+
   // ── Initial load ──
 
   useEffect(() => {
     if (!user) return
     refreshMonths()
     loadMonth(selectedMonth)
-  }, [user, selectedMonth, loadMonth, refreshMonths])
+    loadCategories()
+  }, [user, selectedMonth, loadMonth, refreshMonths, loadCategories])
 
   // ── Debounced autosave ──
 
@@ -396,6 +407,8 @@ export default function App() {
                 prevTotals={prevTotals}
                 budgetAlerts={budgetAlerts}
                 dark={dark}
+                categories={userCategories}
+                transactionTotals={txDetailTotals}
               />
             )}
 
@@ -404,6 +417,8 @@ export default function App() {
               <TransactionList
                 month={selectedMonth}
                 onTotalsChanged={handleTransactionTotals}
+                onDetailedTotals={setTxDetailTotals}
+                categories={userCategories}
               />
             )}
 
@@ -411,7 +426,12 @@ export default function App() {
             <MonthlyTrend dark={dark} selectedMonth={selectedMonth} />
 
             {/* Limites por categoria */}
-            <BudgetProgress totals={totals} onBudgetAlerts={setBudgetAlerts} />
+            <BudgetProgress
+              totals={totals}
+              onBudgetAlerts={setBudgetAlerts}
+              categories={userCategories}
+              onCategoriesChanged={(cats) => { setUserCategories(cats); loadCategories() }}
+            />
 
             {/* Planejamento de Investimentos */}
             <InvestmentPlanner dark={dark} />
