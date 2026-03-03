@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getBudgets, upsertBudget } from '../services/budgetService'
+import { useToast } from '../contexts/ToastContext'
 
 const BRL = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -31,6 +32,7 @@ export default function BudgetProgress({ totals, onBudgetAlerts }) {
   const [editValues, setEditValues] = useState({})
   const [loading, setLoading] = useState(true)
   const saveTimers = useRef({})
+  const { showToast } = useToast()
 
   useEffect(() => () => {
     Object.values(saveTimers.current).forEach(clearTimeout)
@@ -40,9 +42,11 @@ export default function BudgetProgress({ totals, onBudgetAlerts }) {
     try {
       const data = await getBudgets()
       setBudgets(data || [])
-    } catch { /* silent */ }
+    } catch {
+      showToast({ type: 'error', message: 'Erro ao carregar limites de orçamento.' })
+    }
     finally { setLoading(false) }
-  }, [])
+  }, [showToast])
 
   useEffect(() => { load() }, [load])
 
@@ -74,7 +78,9 @@ export default function BudgetProgress({ totals, onBudgetAlerts }) {
         const data = await getBudgets()
         setBudgets(data || [])
         setEditValues(prev => { const n = { ...prev }; delete n[category]; return n })
-      } catch { /* silent */ }
+      } catch {
+        showToast({ type: 'error', message: 'Erro ao salvar limite. Tente novamente.' })
+      }
     }, 800)
   }
 
@@ -91,7 +97,7 @@ export default function BudgetProgress({ totals, onBudgetAlerts }) {
     upsertBudget({ category, limit_amount: num })
       .then(() => getBudgets())
       .then(data => setBudgets(data || []))
-      .catch(() => {})
+      .catch(() => showToast({ type: 'error', message: 'Erro ao salvar limite. Tente novamente.' }))
   }
 
   if (loading) return null

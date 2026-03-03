@@ -12,6 +12,7 @@ import Welcome from './components/Welcome'
 import { useDarkMode } from './hooks/useDarkMode'
 import { useAuth } from './contexts/AuthContext'
 import { getSnapshot, upsertSnapshot, listMonths } from './services/snapshotService'
+import { useToast } from './contexts/ToastContext'
 
 const LEGACY_KEY = 'dashboard-financas-totals'
 const EMPTY = { receita: 0, fixas: 0, cartao: 0, invest: 0 }
@@ -68,6 +69,7 @@ function prevMonthKey(month) {
 export default function App() {
   const { dark, toggle } = useDarkMode()
   const { user, loading: authLoading, signOut } = useAuth()
+  const { showToast } = useToast()
 
   const currentMonth = useMemo(() => format(new Date(), 'yyyy-MM'), [])
 
@@ -96,8 +98,10 @@ export default function App() {
     try {
       const months = await listMonths()
       setAvailableMonths(months)
-    } catch { /* silent */ }
-  }, [])
+    } catch {
+      showToast({ type: 'error', message: 'Erro ao carregar meses disponíveis.' })
+    }
+  }, [showToast])
 
   // ── Load snapshot for a given month ──
 
@@ -156,6 +160,7 @@ export default function App() {
       setTotals({ ...EMPTY })
       setShowDash(false)
       setPrevTotals(null)
+      showToast({ type: 'error', message: 'Erro ao carregar dados do mês.' })
     } finally {
       setMonthLoading(false)
     }
