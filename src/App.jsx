@@ -8,6 +8,7 @@ import MonthSelector from './components/MonthSelector'
 import InvestmentPlanner from './components/InvestmentPlanner'
 import BudgetProgress from './components/BudgetProgress'
 import ConfirmModal from './components/ConfirmModal'
+import Welcome from './components/Welcome'
 import { useDarkMode } from './hooks/useDarkMode'
 import { useAuth } from './contexts/AuthContext'
 import { getSnapshot, upsertSnapshot, listMonths } from './services/snapshotService'
@@ -292,8 +293,13 @@ export default function App() {
           </div>
         ) : (
           <>
+            {/* Onboarding para novos usuarios */}
+            {!showDash && availableMonths.length === 0 && !Object.values(totals).some(v => v > 0) && (
+              <Welcome />
+            )}
+
             {/* Import + Manual inputs */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+            <div id="input-section" className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
               {/* File Importer */}
               <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-6">
                 <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 sm:mb-4">Importar arquivo</h2>
