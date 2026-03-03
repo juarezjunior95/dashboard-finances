@@ -14,8 +14,9 @@ import Welcome from './components/Welcome'
 import { SkeletonDashboardPage, SkeletonBudgetProgress, SkeletonInvestmentPlanner } from './components/Skeleton'
 import { useDarkMode } from './hooks/useDarkMode'
 import { useAuth } from './contexts/AuthContext'
-import { getSnapshot, upsertSnapshot, listMonths } from './services/snapshotService'
+import { getSnapshot, upsertSnapshot, listMonths, listAllSnapshots } from './services/snapshotService'
 import { listCategories } from './services/categoryService'
+import ForecastCard from './components/ForecastCard'
 import { useToast } from './contexts/ToastContext'
 
 const LEGACY_KEY = 'dashboard-financas-totals'
@@ -88,6 +89,7 @@ export default function App() {
   const [confirmReset, setConfirmReset] = useState(false)
   const [userCategories, setUserCategories] = useState(null)
   const [txDetailTotals, setTxDetailTotals] = useState(null)
+  const [allSnapshots, setAllSnapshots] = useState([])
 
   const totalsRef = useRef(totals)
   const saveTimer = useRef(null)
@@ -179,6 +181,13 @@ export default function App() {
     } catch { /* fallback handled in service */ }
   }, [])
 
+  const loadSnapshots = useCallback(async () => {
+    try {
+      const snaps = await listAllSnapshots()
+      setAllSnapshots(snaps)
+    } catch { /* non-critical */ }
+  }, [])
+
   // ── Initial load ──
 
   useEffect(() => {
@@ -186,7 +195,8 @@ export default function App() {
     refreshMonths()
     loadMonth(selectedMonth)
     loadCategories()
-  }, [user, selectedMonth, loadMonth, refreshMonths, loadCategories])
+    loadSnapshots()
+  }, [user, selectedMonth, loadMonth, refreshMonths, loadCategories, loadSnapshots])
 
   // ── Debounced autosave ──
 
@@ -206,6 +216,7 @@ export default function App() {
         statusTimer.current = setTimeout(() => setSaveStatus(null), 2000)
         const months = await listMonths()
         setAvailableMonths(months)
+        loadSnapshots()
       } catch {
         setSaveStatus('error')
       }
@@ -412,6 +423,16 @@ export default function App() {
               />
             )}
 
+            {/* Previsão do mês */}
+            {showDash && (
+              <ForecastCard
+                totals={totals}
+                selectedMonth={selectedMonth}
+                currentMonth={currentMonth}
+                historicalSnapshots={allSnapshots}
+              />
+            )}
+
             {/* Transações detalhadas */}
             {showDash && (
               <TransactionList
@@ -423,7 +444,7 @@ export default function App() {
             )}
 
             {/* Evolução mensal */}
-            <MonthlyTrend dark={dark} selectedMonth={selectedMonth} />
+            <MonthlyTrend dark={dark} selectedMonth={selectedMonth} externalSnapshots={allSnapshots} />
 
             {/* Limites por categoria */}
             <BudgetProgress

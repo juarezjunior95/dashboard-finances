@@ -44,25 +44,28 @@ function TrendBadge({ label, pctChange, positiveIsGood }) {
   )
 }
 
-export default function MonthlyTrend({ dark, selectedMonth }) {
+export default function MonthlyTrend({ dark, selectedMonth, externalSnapshots }) {
   const { showToast } = useToast()
-  const [snapshots, setSnapshots] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [internalSnapshots, setInternalSnapshots] = useState([])
+  const [loading, setLoading] = useState(!externalSnapshots)
   const [showTable, setShowTable] = useState(false)
 
   const load = useCallback(async () => {
+    if (externalSnapshots) return
     setLoading(true)
     try {
       const data = await listAllSnapshots()
-      setSnapshots(data)
+      setInternalSnapshots(data)
     } catch {
       showToast({ type: 'error', message: 'Erro ao carregar evolução mensal.' })
     } finally {
       setLoading(false)
     }
-  }, [showToast])
+  }, [showToast, externalSnapshots])
 
   useEffect(() => { load() }, [load])
+
+  const snapshots = externalSnapshots || internalSnapshots
 
   const recent = useMemo(() => {
     if (snapshots.length <= 1) return snapshots
