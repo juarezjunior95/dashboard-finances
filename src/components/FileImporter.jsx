@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react'
 import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
 import { toNumberBR } from '../utils/toNumberBR'
+import { bulkInsertTransactions } from '../services/transactionService'
 
 const ACCEPTED = '.csv,.xlsx,.xls,.xml'
 
@@ -44,15 +45,36 @@ function findColumns(headers) {
   const valIdx = lower.findIndex((h) =>
     ['valor', 'value', 'amount', 'quantia', 'total'].includes(h),
   )
+  const dateIdx = lower.findIndex((h) =>
+    ['data', 'date', 'dia', 'dt'].includes(h),
+  )
+  const descIdx = lower.findIndex((h) =>
+    ['descricao', 'descrição', 'description', 'desc', 'nome', 'name', 'historico', 'histórico'].includes(h),
+  )
 
-  return { catIdx, valIdx }
+  return { catIdx, valIdx, dateIdx, descIdx }
+}
+
+function tryParseDate(raw) {
+  if (!raw) return null
+  const s = String(raw).trim()
+  if (!s) return null
+  const d = new Date(s)
+  if (!isNaN(d.getTime())) return d.toISOString().split('T')[0]
+  const brMatch = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/)
+  if (brMatch) {
+    const year = brMatch[3].length === 2 ? '20' + brMatch[3] : brMatch[3]
+    const d2 = new Date(`${year}-${brMatch[2].padStart(2, '0')}-${brMatch[1].padStart(2, '0')}`)
+    if (!isNaN(d2.getTime())) return d2.toISOString().split('T')[0]
+  }
+  return null
 }
 
 function normalizeRows(rawRows) {
   if (!rawRows.length) return []
 
   const headers = rawRows[0]
-  const { catIdx, valIdx } = findColumns(headers)
+  const { catIdx, valIdx, dateIdx, descIdx } = findColumns(headers)
 
   if (catIdx === -1 || valIdx === -1) {
     throw new Error(
@@ -73,7 +95,10 @@ function normalizeRows(rawRows) {
     if (categoria === null) continue
     if (Number.isNaN(valor)) continue
 
-    rows.push({ categoria, valor })
+    const descricao = descIdx !== -1 ? String(row[descIdx] ?? '').trim() : String(row[catIdx] ?? '').trim()
+    const data = dateIdx !== -1 ? tryParseDate(row[dateIdx]) : null
+
+    rows.push({ categoria, valor, descricao, data })
   }
 
   return rows
@@ -180,7 +205,7 @@ function getParser(fileName) {
 
 // ── Componente ───────────────────────────────────────────
 
-export default function FileImporter({ onTotals }) {
+export default function FileImporter({ onTotals, month }) {
   const [status, setStatus] = useState('idle')
   const [message, setMessage] = useState('')
   const [dragging, setDragging] = useState(false)
@@ -210,6 +235,16 @@ export default function FileImporter({ onTotals }) {
 
         const totals = computeTotals(normalized)
 
+        if (month) {
+          await bulkInsertTransactions(month, normalized.map(row => ({
+            category: row.categoria,
+            description: row.descricao || '',
+            amount: row.valor,
+            date: row.data || null,
+            source: 'import',
+          })))
+        }
+
         setStatus('success')
         setMessage(`${normalized.length} lançamento(s) importado(s) de "${file.name}"`)
         onTotals?.(totals)
@@ -218,7 +253,7 @@ export default function FileImporter({ onTotals }) {
         setMessage(err.message)
       }
     },
-    [onTotals],
+    [onTotals, month],
   )
 
   const handleFileChange = (e) => {
