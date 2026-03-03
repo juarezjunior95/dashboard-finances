@@ -7,6 +7,7 @@ import Login from './components/Login'
 import MonthSelector from './components/MonthSelector'
 import InvestmentPlanner from './components/InvestmentPlanner'
 import BudgetProgress from './components/BudgetProgress'
+import ConfirmModal from './components/ConfirmModal'
 import { useDarkMode } from './hooks/useDarkMode'
 import { useAuth } from './contexts/AuthContext'
 import { getSnapshot, upsertSnapshot, listMonths } from './services/snapshotService'
@@ -77,6 +78,7 @@ export default function App() {
   const [monthLoading, setMonthLoading] = useState(true)
   const [saveStatus, setSaveStatus] = useState(null)
   const [budgetAlerts, setBudgetAlerts] = useState({})
+  const [confirmReset, setConfirmReset] = useState(false)
 
   const totalsRef = useRef(totals)
   const saveTimer = useRef(null)
@@ -254,7 +256,7 @@ export default function App() {
             <DarkToggle dark={dark} onToggle={toggle} />
             {showDash && (
               <button
-                onClick={handleReset}
+                onClick={() => setConfirmReset(true)}
                 className="hidden sm:inline text-sm text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 transition-colors cursor-pointer"
               >
                 Limpar
@@ -351,7 +353,7 @@ export default function App() {
                 {/* Mobile-only reset button */}
                 {showDash && (
                   <button
-                    onClick={handleReset}
+                    onClick={() => setConfirmReset(true)}
                     className="sm:hidden mt-3 w-full text-xs text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 transition-colors cursor-pointer text-center"
                   >
                     Limpar dados
@@ -381,6 +383,15 @@ export default function App() {
           </>
         )}
       </main>
+
+      <ConfirmModal
+        open={confirmReset}
+        title="Limpar dados"
+        message="Tem certeza que deseja limpar todos os valores deste mês? Esta ação não pode ser desfeita."
+        confirmLabel="Limpar"
+        onConfirm={() => { setConfirmReset(false); handleReset() }}
+        onCancel={() => setConfirmReset(false)}
+      />
     </div>
   )
 }
