@@ -112,28 +112,45 @@ function BudgetAlert({ alert }) {
   )
 }
 
-function RuleHint({ rule }) {
+function KpiMiniBar({ rule }) {
   if (!rule) return null
-  const statusColor = {
-    excellent: 'text-emerald-600 dark:text-emerald-400',
-    ok: 'text-blue-600 dark:text-blue-400',
-    warning: 'text-amber-600 dark:text-amber-400',
-    danger: 'text-red-600 dark:text-red-400',
-  }
-  const idealLabel = rule.direction === 'max'
-    ? `ideal: ate ${rule.idealPct}%`
-    : `ideal: min ${rule.idealPct}%`
+  const pct = Math.min(rule.actual, 100)
+  const markerPos = Math.min(rule.idealPct, 100)
+
+  const barColor = {
+    excellent: 'bg-emerald-400',
+    ok: 'bg-blue-400',
+    warning: 'bg-amber-400',
+    danger: 'bg-red-400',
+  }[rule.status] || 'bg-gray-400'
+
   return (
-    <span className={`text-[9px] sm:text-[10px] font-semibold ${statusColor[rule.status] || ''}`}>
-      ({idealLabel})
-    </span>
+    <div className="relative h-1.5 bg-gray-200/60 dark:bg-gray-700/60 rounded-full overflow-visible mt-1">
+      <div
+        className={`absolute top-0 left-0 h-full rounded-full transition-all duration-500 ${barColor}`}
+        style={{ width: `${pct}%`, opacity: 0.9 }}
+      />
+      <div
+        className="absolute top-[-2px] w-[2px] h-[10px] bg-gray-500 dark:bg-gray-300 rounded-full"
+        style={{ left: `${markerPos}%` }}
+      />
+    </div>
   )
 }
 
 function KpiCard({ label, value, percent, color, dark, prevValue, invertColor, budgetAlert, rule }) {
+  const idealLabel = rule
+    ? rule.direction === 'max'
+      ? `Ideal: ate ${rule.idealPct}%`
+      : `Ideal: min ${rule.idealPct}%`
+    : null
+
+  const isOver = rule && rule.availableAmount < 0
+  const availAbs = rule ? Math.abs(rule.availableAmount) : 0
+
   return (
     <div
-      className="rounded-2xl border p-3 sm:p-5 flex flex-col gap-0.5 sm:gap-1"
+      className="rounded-2xl border p-3 sm:p-5 flex flex-col gap-1 sm:gap-1.5"
       style={{
         backgroundColor: dark ? color.darkLight : color.light,
         borderColor: `${color.bg}${dark ? '50' : '30'}`,
@@ -145,18 +162,42 @@ function KpiCard({ label, value, percent, color, dark, prevValue, invertColor, b
         </span>
         <BudgetAlert alert={budgetAlert} />
       </div>
+
       <div className="flex items-center gap-1.5">
         <span className="text-lg sm:text-2xl font-bold" style={{ color: color.bg }}>
           {formatBRL(value)}
         </span>
         <DeltaBadge current={value} previous={prevValue} invertColor={invertColor} />
       </div>
-      <div className="flex items-center gap-1 flex-wrap">
-        <span className="text-[10px] sm:text-xs font-medium" style={{ color: color.bg }}>
-          {percent}% da receita
-        </span>
-        <RuleHint rule={rule} />
-      </div>
+
+      <span className="text-[10px] sm:text-xs font-medium opacity-70 text-gray-600 dark:text-gray-400">
+        {percent}% da receita
+      </span>
+
+      {rule && (
+        <>
+          <KpiMiniBar rule={rule} />
+          <div className="flex items-center justify-between gap-1 mt-0.5">
+            <span className="text-[9px] sm:text-[10px] text-gray-500 dark:text-gray-400">
+              {idealLabel} ({formatBRL(rule.idealAmount)})
+            </span>
+          </div>
+          <div className={`text-[10px] sm:text-xs font-semibold ${
+            isOver
+              ? 'text-red-500 dark:text-red-400'
+              : 'text-emerald-600 dark:text-emerald-400'
+          }`}>
+            {rule.direction === 'max'
+              ? isOver
+                ? `Excede ${formatBRL(availAbs)} do ideal`
+                : `Disponivel: ${formatBRL(availAbs)}`
+              : isOver
+                ? `Faltam ${formatBRL(availAbs)} para o ideal`
+                : `${formatBRL(availAbs)} acima do ideal`
+            }
+          </div>
+        </>
+      )}
     </div>
   )
 }

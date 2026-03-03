@@ -98,6 +98,11 @@ export function analyzeFinances({ receita, fixas, cartao, invest }) {
     if (status === 'danger') dangerCount++
     if (status === 'warning') warningCount++
 
+    const idealAmount = Math.round((receita * rule.idealPct / 100) * 100) / 100
+    const diff = rule.direction === 'max'
+      ? idealAmount - spent
+      : spent - idealAmount
+
     return {
       category: rule.category,
       label: rule.label,
@@ -109,6 +114,9 @@ export function analyzeFinances({ receita, fixas, cartao, invest }) {
       tip: rule.tip,
       actionTip,
       source: SOURCE,
+      idealAmount,
+      spentAmount: spent,
+      availableAmount: Math.round(diff * 100) / 100,
     }
   })
 
