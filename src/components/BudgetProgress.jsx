@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getBudgets, upsertBudget } from '../services/budgetService'
 import { useToast } from '../contexts/ToastContext'
+import { SkeletonBudgetProgress } from './Skeleton'
 
 const BRL = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -100,7 +101,7 @@ export default function BudgetProgress({ totals, onBudgetAlerts }) {
       .catch(() => showToast({ type: 'error', message: 'Erro ao salvar limite. Tente novamente.' }))
   }
 
-  if (loading) return null
+  if (loading) return <SkeletonBudgetProgress />
 
   const hasAnyBudget = budgets.some(b => b.limit_amount > 0)
   const hasAnyValue = Object.values(totals).some(v => v > 0)

@@ -9,6 +9,7 @@ import InvestmentPlanner from './components/InvestmentPlanner'
 import BudgetProgress from './components/BudgetProgress'
 import ConfirmModal from './components/ConfirmModal'
 import Welcome from './components/Welcome'
+import { SkeletonDashboardPage, SkeletonBudgetProgress, SkeletonInvestmentPlanner } from './components/Skeleton'
 import { useDarkMode } from './hooks/useDarkMode'
 import { useAuth } from './contexts/AuthContext'
 import { getSnapshot, upsertSnapshot, listMonths } from './services/snapshotService'
@@ -293,9 +294,7 @@ export default function App() {
 
       <main className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-8 space-y-4 sm:space-y-8">
         {monthLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="w-6 h-6 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
-          </div>
+          <SkeletonDashboardPage />
         ) : (
           <>
             {/* Onboarding para novos usuarios */}

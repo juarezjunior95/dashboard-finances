@@ -11,6 +11,7 @@ import {
   checkOnline,
 } from '../services/investmentService'
 import InvestmentTrendChart from './InvestmentTrendChart'
+import { SkeletonInvestmentPlanner } from './Skeleton'
 
 const BRL = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const OVERRIDES_KEY = 'planner_overrides'
@@ -289,15 +290,7 @@ export default function InvestmentPlanner({ dark }) {
 
   // ── Loading ──
 
-  if (loading) {
-    return (
-      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-6">
-        <div className="flex items-center justify-center py-12">
-          <div className="w-6 h-6 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
-        </div>
-      </div>
-    )
-  }
+  if (loading) return <SkeletonInvestmentPlanner />
 
   // ── Create / edit goal form ──
 
