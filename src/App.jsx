@@ -6,7 +6,9 @@ import DarkToggle from './components/DarkToggle'
 import Login from './components/Login'
 import MonthSelector from './components/MonthSelector'
 import InvestmentPlanner from './components/InvestmentPlanner'
+import MonthlyTrend from './components/MonthlyTrend'
 import BudgetProgress from './components/BudgetProgress'
+import TransactionList from './components/TransactionList'
 import ConfirmModal from './components/ConfirmModal'
 import Welcome from './components/Welcome'
 import { SkeletonDashboardPage, SkeletonBudgetProgress, SkeletonInvestmentPlanner } from './components/Skeleton'
@@ -236,6 +238,18 @@ export default function App() {
     setSelectedMonth(month)
   }
 
+  const handleTransactionTotals = useCallback(async (newTotals) => {
+    setTotals(newTotals)
+    totalsRef.current = newTotals
+    const hasSomething = Object.values(newTotals).some(v => v > 0)
+    setShowDash(hasSomething)
+    try {
+      await upsertSnapshot({ month: selectedMonthRef.current, ...newTotals })
+      const months = await listMonths()
+      setAvailableMonths(months)
+    } catch { /* toast handled by TransactionList */ }
+  }, [])
+
   const hasValues = Object.values(totals).some((v) => v > 0)
 
   if (authLoading) return <LoadingScreen />
@@ -307,7 +321,7 @@ export default function App() {
               {/* File Importer */}
               <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-6">
                 <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 sm:mb-4">Importar arquivo</h2>
-                <FileImporter onTotals={handleImport} />
+                <FileImporter onTotals={handleImport} month={selectedMonth} />
               </div>
 
               {/* Manual inputs */}
@@ -384,6 +398,17 @@ export default function App() {
                 dark={dark}
               />
             )}
+
+            {/* Transações detalhadas */}
+            {showDash && (
+              <TransactionList
+                month={selectedMonth}
+                onTotalsChanged={handleTransactionTotals}
+              />
+            )}
+
+            {/* Evolução mensal */}
+            <MonthlyTrend dark={dark} selectedMonth={selectedMonth} />
 
             {/* Limites por categoria */}
             <BudgetProgress totals={totals} onBudgetAlerts={setBudgetAlerts} />

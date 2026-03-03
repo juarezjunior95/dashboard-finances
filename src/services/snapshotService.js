@@ -128,6 +128,33 @@ export async function listMonths() {
   }
 }
 
+export async function listAllSnapshots() {
+  const user = await getUser()
+  if (!user) {
+    const store = getStore()
+    return Object.values(store).sort((a, b) => (a.month || '').localeCompare(b.month || ''))
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('monthly_snapshots')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('month', { ascending: true })
+    if (error) throw error
+
+    const store = getStore()
+    for (const snap of (data || [])) {
+      store[snap.month] = snap
+    }
+    setStore(store)
+    return data || []
+  } catch {
+    const store = getStore()
+    return Object.values(store).sort((a, b) => (a.month || '').localeCompare(b.month || ''))
+  }
+}
+
 export async function deleteSnapshot(month) {
   const user = await getUser()
 
