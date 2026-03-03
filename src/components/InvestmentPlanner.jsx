@@ -69,7 +69,7 @@ const SMALL_INPUT_CLS = `w-24 px-2 py-1.5 rounded-lg border border-gray-200 dark
 
 // ── Main Component ───────────────────────────────────────
 
-export default function InvestmentPlanner({ dark }) {
+export default function InvestmentPlanner({ dark, onPlanCalculated }) {
   const [goal, setGoal] = useState(null)
   const [investments, setInvestments] = useState([])
   const [overrides, setOverrides] = useState(() => {
@@ -140,6 +140,10 @@ export default function InvestmentPlanner({ dark }) {
       maxPerMonth: Number(limits.max) || Infinity,
     })
   }, [goal, investments, numericOverrides, limits])
+
+  useEffect(() => {
+    onPlanCalculated?.(plan)
+  }, [plan, onPlanCalculated])
 
   // ── Debounced goal save ──
 

@@ -18,3 +18,8 @@ html, body {
   to { opacity: 1; transform: translateX(0); }
 }
 .animate-slide-in { animation: slide-in 0.3s ease-out; }
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}

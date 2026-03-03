@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { addMonths, format, startOfMonth } from 'date-fns'
+import { addMonths, format, startOfMonth, getDaysInMonth, getDate } from 'date-fns'
 import FileImporter from './components/FileImporter'
 import Dashboard from './components/Dashboard'
 import DarkToggle from './components/DarkToggle'
@@ -17,6 +17,8 @@ import { useAuth } from './contexts/AuthContext'
 import { getSnapshot, upsertSnapshot, listMonths, listAllSnapshots } from './services/snapshotService'
 import { listCategories } from './services/categoryService'
 import ForecastCard from './components/ForecastCard'
+import SmartAlerts from './components/SmartAlerts'
+import { forecastMonth } from './utils/forecast'
 import { useToast } from './contexts/ToastContext'
 
 const LEGACY_KEY = 'dashboard-financas-totals'
@@ -90,6 +92,7 @@ export default function App() {
   const [userCategories, setUserCategories] = useState(null)
   const [txDetailTotals, setTxDetailTotals] = useState(null)
   const [allSnapshots, setAllSnapshots] = useState([])
+  const [investPlan, setInvestPlan] = useState(null)
 
   const totalsRef = useRef(totals)
   const saveTimer = useRef(null)
@@ -272,6 +275,18 @@ export default function App() {
     } catch { /* toast handled by TransactionList */ }
   }, [])
 
+  const forecast = useMemo(() => {
+    if (selectedMonth !== currentMonth) return null
+    if (!Object.values(totals).some(v => v > 0)) return null
+    const now = new Date()
+    return forecastMonth({
+      currentTotals: totals,
+      dayOfMonth: getDate(now),
+      daysInMonth: getDaysInMonth(now),
+      historicalSnapshots: allSnapshots.filter(s => s.month !== currentMonth).slice(-6),
+    })
+  }, [totals, selectedMonth, currentMonth, allSnapshots])
+
   const hasValues = Object.values(totals).some((v) => v > 0)
 
   if (authLoading) return <LoadingScreen />
@@ -336,6 +351,20 @@ export default function App() {
             {/* Onboarding para novos usuarios */}
             {!showDash && availableMonths.length === 0 && !Object.values(totals).some(v => v > 0) && (
               <Welcome />
+            )}
+
+            {/* Alertas inteligentes */}
+            {showDash && (
+              <SmartAlerts
+                totals={totals}
+                prevTotals={prevTotals}
+                budgetAlerts={budgetAlerts}
+                plan={investPlan}
+                forecast={forecast}
+                selectedMonth={selectedMonth}
+                currentMonth={currentMonth}
+                historicalSnapshots={allSnapshots}
+              />
             )}
 
             {/* Import + Manual inputs */}
@@ -455,7 +484,7 @@ export default function App() {
             />
 
             {/* Planejamento de Investimentos */}
-            <InvestmentPlanner dark={dark} />
+            <InvestmentPlanner dark={dark} onPlanCalculated={setInvestPlan} />
           </>
         )}
       </main>
