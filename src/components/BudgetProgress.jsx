@@ -76,28 +76,27 @@ export default function BudgetProgress({ totals, onBudgetAlerts, categories, onC
 
     clearTimeout(saveTimers.current[category])
     saveTimers.current[category] = setTimeout(async () => {
-      const num = parseFloat(rawValue)
+      const num = rawValue === '' ? 0 : parseFloat(rawValue)
       if (isNaN(num) || num < 0) return
 
       try {
         await upsertBudget({ category, limit_amount: num })
         const data = await getBudgets()
         setBudgets(data || [])
-        setEditValues(prev => { const n = { ...prev }; delete n[category]; return n })
       } catch {
         showToast({ type: 'error', message: 'Erro ao salvar limite. Tente novamente.' })
       }
-    }, 800)
+    }, 1000)
   }
 
   const handleBlur = (category) => {
     clearTimeout(saveTimers.current[category])
     const raw = editValues[category]
-    if (raw === undefined) return
-
-    const num = parseFloat(raw)
     setEditValues(prev => { const n = { ...prev }; delete n[category]; return n })
 
+    if (raw === undefined) return
+
+    const num = raw === '' ? 0 : parseFloat(raw)
     if (isNaN(num) || num < 0) return
 
     upsertBudget({ category, limit_amount: num })

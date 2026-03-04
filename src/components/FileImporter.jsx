@@ -30,6 +30,14 @@ const BASE_CATEGORY_MAP = {
   renda: 'receita',
   salario: 'receita',
   salário: 'receita',
+  compras: 'compras',
+  compra: 'compras',
+  'gastos diarios': 'compras',
+  'gastos diários': 'compras',
+  'gasto diario': 'compras',
+  'gasto diário': 'compras',
+  mercado: 'compras',
+  supermercado: 'compras',
 }
 
 function buildCategoryMap(userCategories) {

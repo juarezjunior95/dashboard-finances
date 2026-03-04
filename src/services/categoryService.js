@@ -27,7 +27,8 @@ export const DEFAULT_CATEGORIES = [
   { key: 'receita', label: 'Receitas', color: 'emerald', parent_category: 'receita', icon: '💰', is_default: true, sort_order: 0 },
   { key: 'fixas', label: 'Contas Fixas', color: 'rose', parent_category: 'fixas', icon: '🏠', is_default: true, sort_order: 1 },
   { key: 'cartao', label: 'Cartão', color: 'orange', parent_category: 'cartao', icon: '💳', is_default: true, sort_order: 2 },
-  { key: 'invest', label: 'Investimentos', color: 'indigo', parent_category: 'invest', icon: '📈', is_default: true, sort_order: 3 },
+  { key: 'compras', label: 'Compras/Gastos Diários', color: 'amber', parent_category: 'cartao', icon: '🛒', is_default: true, sort_order: 3 },
+  { key: 'invest', label: 'Investimentos', color: 'indigo', parent_category: 'invest', icon: '📈', is_default: true, sort_order: 4 },
 ]
 
 export const AVAILABLE_COLORS = [
@@ -88,12 +89,38 @@ async function seedDefaults(user) {
   }
 }
 
+async function ensureBuiltinCategories(existingCats, user) {
+  const existingKeys = new Set(existingCats.map(c => c.key))
+  const missing = DEFAULT_CATEGORIES.filter(c => !existingKeys.has(c.key))
+  if (missing.length === 0) return existingCats
+
+  const added = []
+  for (const cat of missing) {
+    if (user) {
+      try {
+        const { data, error } = await supabase
+          .from('user_categories')
+          .insert({ user_id: user.id, key: cat.key, label: cat.label, color: cat.color, parent_category: cat.parent_category, icon: cat.icon, is_default: true, sort_order: cat.sort_order })
+          .select()
+          .single()
+        if (!error && data) added.push(data)
+      } catch { /* ignore */ }
+    } else {
+      added.push({ id: crypto.randomUUID(), ...cat, created_at: new Date().toISOString() })
+    }
+  }
+
+  const result = [...existingCats, ...added]
+  setStore(result)
+  return result
+}
+
 export async function listCategories() {
   const user = await getUser()
 
   if (!user) {
     const stored = getStore()
-    if (stored.length > 0) return stored
+    if (stored.length > 0) return ensureBuiltinCategories(stored, null)
     const fallback = DEFAULT_CATEGORIES.map(c => ({
       id: crypto.randomUUID(),
       ...c,
@@ -117,11 +144,12 @@ export async function listCategories() {
       return await seedDefaults(user)
     }
 
-    setStore(data)
-    return data
+    const withBuiltins = await ensureBuiltinCategories(data, user)
+    setStore(withBuiltins)
+    return withBuiltins
   } catch {
     const stored = getStore()
-    if (stored.length > 0) return stored
+    if (stored.length > 0) return ensureBuiltinCategories(stored, null)
     const fallback = DEFAULT_CATEGORIES.map(c => ({
       id: crypto.randomUUID(),
       ...c,
