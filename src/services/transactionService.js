@@ -199,6 +199,63 @@ export async function getDetailedTransactionTotals(month) {
   return totals
 }
 
+export async function deleteTransactionsBySource(month, source) {
+  const user = await getUser()
+
+  if (!user) {
+    const store = getStore()
+    if (store[month]) {
+      store[month] = store[month].filter(t => t.source !== source)
+      setStore(store)
+    }
+    return
+  }
+
+  try {
+    const { error } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('month', month)
+      .eq('source', source)
+    if (error) throw error
+  } catch (err) {
+    throw err
+  }
+
+  const store = getStore()
+  if (store[month]) {
+    store[month] = store[month].filter(t => t.source !== source)
+    setStore(store)
+  }
+}
+
+export async function clearTransactions(month) {
+  const user = await getUser()
+
+  if (!user) {
+    const store = getStore()
+    store[month] = []
+    setStore(store)
+    return
+  }
+
+  try {
+    const { error } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('month', month)
+    if (error) throw error
+  } catch (err) {
+    throw err
+  }
+
+  const store = getStore()
+  store[month] = []
+  setStore(store)
+}
+
 export async function bulkInsertTransactions(month, transactions) {
   if (!/^\d{4}-\d{2}$/.test(month)) {
     throw new Error('Mês inválido. Use YYYY-MM.')

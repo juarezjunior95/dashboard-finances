@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
 import { toNumberBR } from '../utils/toNumberBR'
-import { bulkInsertTransactions } from '../services/transactionService'
+import { bulkInsertTransactions, listTransactions, clearTransactions } from '../services/transactionService'
 import { listCategories } from '../services/categoryService'
 
 const ACCEPTED = '.csv,.xlsx,.xls,.xml'
@@ -299,16 +299,19 @@ export default function FileImporter({ onTotals, month }) {
   const [pendingUnmapped, setPendingUnmapped] = useState(null)
   const [pendingRows, setPendingRows] = useState(null)
   const [pendingFile, setPendingFile] = useState(null)
+  const [importModal, setImportModal] = useState(null)
+  const importModeRef = useRef(null)
   const inputRef = useRef(null)
 
   useEffect(() => {
     listCategories().then(setUserCategories).catch(() => {})
   }, [])
 
-  const finishImport = useCallback(async (allRows, fileName) => {
-    const totals = computeTotals(allRows, userCategories)
-
+  const finishImport = useCallback(async (allRows, fileName, replaceExisting) => {
     if (month) {
+      if (replaceExisting) {
+        await clearTransactions(month)
+      }
       await bulkInsertTransactions(month, allRows.map(row => ({
         category: row.categoria,
         description: row.descricao || '',
@@ -320,8 +323,42 @@ export default function FileImporter({ onTotals, month }) {
 
     setStatus('success')
     setMessage(`${allRows.length} lançamento(s) importado(s) de "${fileName}"`)
-    onTotals?.(totals)
-  }, [onTotals, month, userCategories])
+    onTotals?.()
+  }, [onTotals, month])
+
+  const executeImport = useCallback(async (rows, fileName, replaceExisting) => {
+    setStatus('loading')
+    try {
+      await finishImport(rows, fileName, replaceExisting)
+    } catch (err) {
+      setStatus('error')
+      setMessage(err.message)
+    }
+  }, [finishImport])
+
+  const checkExistingAndImport = useCallback(async (rows, fileName) => {
+    if (!month) {
+      await executeImport(rows, fileName, false)
+      return
+    }
+
+    const existing = await listTransactions(month)
+    if (existing.length === 0) {
+      await executeImport(rows, fileName, false)
+      return
+    }
+
+    importModeRef.current = { rows, fileName }
+    setImportModal(existing.length)
+    setStatus('idle')
+  }, [month, executeImport])
+
+  const handleImportModalChoice = useCallback(async (choice) => {
+    const { rows, fileName } = importModeRef.current || {}
+    setImportModal(null)
+    if (!rows || choice === 'cancel') return
+    await executeImport(rows, fileName, choice === 'replace')
+  }, [executeImport])
 
   const processFile = useCallback(
     async (file) => {
@@ -330,6 +367,7 @@ export default function FileImporter({ onTotals, month }) {
       setPendingUnmapped(null)
       setPendingRows(null)
       setPendingFile(null)
+      setImportModal(null)
 
       try {
         const parser = getParser(file.name)
@@ -358,13 +396,13 @@ export default function FileImporter({ onTotals, month }) {
           )
         }
 
-        await finishImport(rows, file.name)
+        await checkExistingAndImport(rows, file.name)
       } catch (err) {
         setStatus('error')
         setMessage(err.message)
       }
     },
-    [onTotals, month, userCategories, finishImport],
+    [userCategories, checkExistingAndImport],
   )
 
   const handleApplyMapping = useCallback(async (mapping) => {
@@ -383,15 +421,15 @@ export default function FileImporter({ onTotals, month }) {
       if (allRows.length === 0) {
         throw new Error('Nenhuma linha válida após o mapeamento.')
       }
-      await finishImport(allRows, pendingFile || 'arquivo')
       setPendingUnmapped(null)
       setPendingRows(null)
       setPendingFile(null)
+      await checkExistingAndImport(allRows, pendingFile || 'arquivo')
     } catch (err) {
       setStatus('error')
       setMessage(err.message)
     }
-  }, [pendingUnmapped, pendingRows, pendingFile, finishImport])
+  }, [pendingUnmapped, pendingRows, pendingFile, checkExistingAndImport])
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0]
@@ -472,6 +510,29 @@ export default function FileImporter({ onTotals, month }) {
           onApply={handleApplyMapping}
           onCancel={() => { setPendingUnmapped(null); setPendingRows(null); setPendingFile(null) }}
         />
+      )}
+
+      {/* Import mode modal */}
+      {importModal !== null && (
+        <div className="mt-3 space-y-3 p-3 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950">
+          <p className="text-xs font-semibold text-blue-800 dark:text-blue-300">
+            Este mês já tem {importModal} transaç{importModal === 1 ? 'ão' : 'ões'}. O que deseja fazer?
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => handleImportModalChoice('replace')}
+              className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors cursor-pointer">
+              Substituir todas
+            </button>
+            <button onClick={() => handleImportModalChoice('add')}
+              className="px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors cursor-pointer">
+              Adicionar às existentes
+            </button>
+            <button onClick={() => handleImportModalChoice('cancel')}
+              className="px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors cursor-pointer">
+              Cancelar
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Mensagem de status */}

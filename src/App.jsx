@@ -16,6 +16,12 @@ import { useDarkMode } from './hooks/useDarkMode'
 import { useAuth } from './contexts/AuthContext'
 import { getSnapshot, upsertSnapshot, listMonths, listAllSnapshots } from './services/snapshotService'
 import { listCategories } from './services/categoryService'
+import {
+  getTransactionTotals,
+  upsertTransaction,
+  deleteTransactionsBySource,
+  listTransactions,
+} from './services/transactionService'
 import ForecastCard from './components/ForecastCard'
 import SmartAlerts from './components/SmartAlerts'
 import { forecastMonth } from './utils/forecast'
@@ -93,15 +99,15 @@ export default function App() {
   const [txDetailTotals, setTxDetailTotals] = useState(null)
   const [allSnapshots, setAllSnapshots] = useState([])
   const [investPlan, setInvestPlan] = useState(null)
+  const [txCount, setTxCount] = useState(0)
 
   const totalsRef = useRef(totals)
-  const saveTimer = useRef(null)
   const statusTimer = useRef(null)
   const selectedMonthRef = useRef(selectedMonth)
 
   useEffect(() => { totalsRef.current = totals }, [totals])
   useEffect(() => { selectedMonthRef.current = selectedMonth }, [selectedMonth])
-  useEffect(() => () => { clearTimeout(saveTimer.current); clearTimeout(statusTimer.current) }, [])
+  useEffect(() => () => { clearTimeout(statusTimer.current) }, [])
 
   // ── Load available months ──
 
@@ -142,6 +148,10 @@ export default function App() {
         }
       }
 
+      const txTotals = await getTransactionTotals(month)
+      const txs = await listTransactions(month)
+      setTxCount(txs.length)
+
       if (snap) {
         const t = {
           receita: Number(snap.receita) || 0,
@@ -149,10 +159,46 @@ export default function App() {
           cartao: Number(snap.cartao) || 0,
           invest: Number(snap.invest) || 0,
         }
-        setTotals(t)
-        setShowDash(Object.values(t).some(v => v > 0))
+
+        let migrated = false
+        for (const cat of ['receita', 'fixas', 'cartao', 'invest']) {
+          const diff = Math.round((t[cat] - (txTotals[cat] || 0)) * 100) / 100
+          if (diff > 0.01) {
+            await upsertTransaction({
+              month,
+              category: cat,
+              amount: diff,
+              description: 'Saldo anterior',
+              source: 'migration',
+            })
+            migrated = true
+          }
+        }
+
+        if (migrated) {
+          const newTotals = await getTransactionTotals(month)
+          const count = (await listTransactions(month)).length
+          setTxCount(count)
+          setTotals(newTotals)
+          totalsRef.current = newTotals
+          setShowDash(Object.values(newTotals).some(v => v > 0))
+          await upsertSnapshot({ month, ...newTotals })
+        } else {
+          const best = {}
+          for (const cat of ['receita', 'fixas', 'cartao', 'invest']) {
+            best[cat] = Math.max(t[cat], txTotals[cat] || 0)
+          }
+          setTotals(best)
+          totalsRef.current = best
+          setShowDash(Object.values(best).some(v => v > 0))
+        }
+      } else if (Object.values(txTotals).some(v => v > 0)) {
+        setTotals(txTotals)
+        totalsRef.current = txTotals
+        setShowDash(true)
       } else {
         setTotals({ ...EMPTY })
+        totalsRef.current = { ...EMPTY }
         setShowDash(false)
       }
 
@@ -171,11 +217,12 @@ export default function App() {
       setTotals({ ...EMPTY })
       setShowDash(false)
       setPrevTotals(null)
+      setTxCount(0)
       showToast({ type: 'error', message: 'Erro ao carregar dados do mês.' })
     } finally {
       setMonthLoading(false)
     }
-  }, [currentMonth, refreshMonths])
+  }, [currentMonth, refreshMonths, showToast])
 
   const loadCategories = useCallback(async () => {
     try {
@@ -201,39 +248,31 @@ export default function App() {
     loadSnapshots()
   }, [user, selectedMonth, loadMonth, refreshMonths, loadCategories, loadSnapshots])
 
-  // ── Debounced autosave ──
-
-  const scheduleSave = useCallback(() => {
-    clearTimeout(saveTimer.current)
-    setSaveStatus('saving')
-    saveTimer.current = setTimeout(async () => {
-      const t = totalsRef.current
-      const month = selectedMonthRef.current
-      const hasSomething = Object.values(t).some(v => v > 0)
-      if (!hasSomething) { setSaveStatus(null); return }
-
-      try {
-        await upsertSnapshot({ month, ...t })
-        setSaveStatus('saved')
-        clearTimeout(statusTimer.current)
-        statusTimer.current = setTimeout(() => setSaveStatus(null), 2000)
-        const months = await listMonths()
-        setAvailableMonths(months)
-        loadSnapshots()
-      } catch {
-        setSaveStatus('error')
-      }
-    }, 600)
-  }, [])
-
   // ── Handlers ──
 
-  const handleImport = useCallback((imported) => {
-    setTotals(imported)
-    setShowDash(true)
-    totalsRef.current = imported
-    scheduleSave()
-  }, [scheduleSave])
+  const handleImport = useCallback(async () => {
+    const month = selectedMonthRef.current
+    setSaveStatus('saving')
+    try {
+      const txTotals = await getTransactionTotals(month)
+      setTotals(txTotals)
+      totalsRef.current = txTotals
+      const hasSomething = Object.values(txTotals).some(v => v > 0)
+      setShowDash(hasSomething)
+      await upsertSnapshot({ month, ...txTotals })
+      const months = await listMonths()
+      setAvailableMonths(months)
+      const txs = await listTransactions(month)
+      setTxCount(txs.length)
+      loadSnapshots()
+      setSaveStatus('saved')
+      clearTimeout(statusTimer.current)
+      statusTimer.current = setTimeout(() => setSaveStatus(null), 2000)
+    } catch {
+      showToast({ type: 'error', message: 'Erro ao processar importação.' })
+      setSaveStatus('error')
+    }
+  }, [loadSnapshots, showToast])
 
   const handleInputChange = (e) => {
     const { name, value } = e.target
@@ -242,23 +281,77 @@ export default function App() {
       totalsRef.current = next
       return next
     })
-    scheduleSave()
   }
 
-  const handleApplyManual = () => {
-    setShowDash(true)
-    scheduleSave()
+  const ADJ_LABELS = {
+    receita: 'Receita (entrada manual)',
+    fixas: 'Contas fixas (ajuste manual)',
+    cartao: 'Cartão (ajuste manual)',
+    invest: 'Investimentos (ajuste manual)',
   }
+
+  const handleApplyManual = useCallback(async () => {
+    const month = selectedMonthRef.current
+    const inputValues = totalsRef.current
+
+    setSaveStatus('saving')
+    try {
+      await deleteTransactionsBySource(month, 'adjustment')
+      const txTotals = await getTransactionTotals(month)
+
+      const deltas = {}
+      for (const cat of ['receita', 'fixas', 'cartao', 'invest']) {
+        const diff = Math.round(((inputValues[cat] || 0) - (txTotals[cat] || 0)) * 100) / 100
+        if (Math.abs(diff) >= 0.01) {
+          deltas[cat] = diff
+          await upsertTransaction({
+            month,
+            category: cat,
+            amount: diff,
+            description: ADJ_LABELS[cat],
+            source: 'adjustment',
+          })
+        }
+      }
+
+      const finalTotals = await getTransactionTotals(month)
+      setTotals(finalTotals)
+      totalsRef.current = finalTotals
+      const hasSomething = Object.values(finalTotals).some(v => v > 0)
+      setShowDash(hasSomething)
+
+      await upsertSnapshot({ month, ...finalTotals })
+      const months = await listMonths()
+      setAvailableMonths(months)
+      const txs = await listTransactions(month)
+      setTxCount(txs.length)
+      loadSnapshots()
+
+      const deltaEntries = Object.entries(deltas)
+      if (deltaEntries.length > 0) {
+        const summary = deltaEntries
+          .map(([cat, d]) => `${ADJ_LABELS[cat].split(' (')[0]}: ${d > 0 ? '+' : ''}${BRL_FMT(d)}`)
+          .join(', ')
+        showToast({ type: 'success', message: `Ajustes aplicados: ${summary}` })
+      }
+
+      setSaveStatus('saved')
+      clearTimeout(statusTimer.current)
+      statusTimer.current = setTimeout(() => setSaveStatus(null), 2000)
+    } catch {
+      setSaveStatus('error')
+      showToast({ type: 'error', message: 'Erro ao salvar ajustes.' })
+    }
+  }, [loadSnapshots, showToast])
 
   const handleReset = async () => {
     setTotals({ ...EMPTY })
+    totalsRef.current = { ...EMPTY }
     setShowDash(false)
-    clearTimeout(saveTimer.current)
     setSaveStatus(null)
   }
 
   const handleMonthChange = (month) => {
-    clearTimeout(saveTimer.current)
     setSaveStatus(null)
     setSelectedMonth(month)
   }
@@ -272,8 +365,11 @@ export default function App() {
       await upsertSnapshot({ month: selectedMonthRef.current, ...newTotals })
       const months = await listMonths()
       setAvailableMonths(months)
+      const txs = await listTransactions(selectedMonthRef.current)
+      setTxCount(txs.length)
+      loadSnapshots()
     } catch { /* toast handled by TransactionList */ }
-  }, [])
+  }, [loadSnapshots])
 
   const forecast = useMemo(() => {
     if (selectedMonth !== currentMonth) return null
@@ -378,6 +474,13 @@ export default function App() {
               {/* Manual inputs */}
               <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-6">
                 <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 sm:mb-4">Entrada manual</h2>
+
+                {txCount > 0 && (
+                  <p className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500 mb-3">
+                    Valores baseados em {txCount} transaç{txCount === 1 ? 'ão' : 'ões'} registrada{txCount === 1 ? '' : 's'}. Alterações criam ajustes.
+                  </p>
+                )}
+
                 <div className="grid grid-cols-2 gap-3 sm:gap-4">
                   <InputField
                     label="Receita"
