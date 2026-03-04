@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabaseClient'
 
 const LS_KEY = 'transactions'
+const PARENT_MAP_KEY = 'categories_parent_map'
 
 function getStore() {
   try {
@@ -180,9 +181,29 @@ export async function deleteTransaction(id, month) {
 
 export async function getTransactionTotals(month) {
   const txs = await listTransactions(month)
-  const { listCategories, groupByParent, getCategoryMap } = await import('../services/categoryService')
-  const categories = await listCategories()
-  const categoryMap = getCategoryMap(categories)
+  
+  // Build parent_category map from localStorage categories
+  let parentMap = {}
+  try {
+    const catsRaw = localStorage.getItem('user_categories')
+    if (catsRaw) {
+      const cats = JSON.parse(catsRaw)
+      for (const c of cats) {
+        parentMap[c.key] = c.parent_category || c.key
+      }
+    }
+  } catch { /* ignore */ }
+  
+  // Fallback defaults if no categories found
+  if (Object.keys(parentMap).length === 0) {
+    parentMap = {
+      receita: 'receita',
+      fixas: 'fixas',
+      cartao: 'cartao',
+      compras: 'cartao',
+      invest: 'invest',
+    }
+  }
   
   const detailedTotals = {}
   for (const tx of txs) {
@@ -190,7 +211,18 @@ export async function getTransactionTotals(month) {
     detailedTotals[tx.category] += Number(tx.amount) || 0
   }
   
-  return groupByParent(detailedTotals, categoryMap)
+  // Group by parent category
+  const totals = { receita: 0, fixas: 0, cartao: 0, invest: 0 }
+  for (const [key, amount] of Object.entries(detailedTotals)) {
+    const parent = parentMap[key] || key
+    if (parent in totals) {
+      totals[parent] += Number(amount) || 0
+    }
+  }
+  
+  console.log('[getTransactionTotals]', { month, txCount: txs.length, detailedTotals, parentMap, totals })
+  
+  return totals
 }
 
 export async function getDetailedTransactionTotals(month) {
