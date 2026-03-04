@@ -180,13 +180,17 @@ export async function deleteTransaction(id, month) {
 
 export async function getTransactionTotals(month) {
   const txs = await listTransactions(month)
-  const totals = { receita: 0, fixas: 0, cartao: 0, invest: 0 }
+  const { listCategories, groupByParent, getCategoryMap } = await import('../services/categoryService')
+  const categories = await listCategories()
+  const categoryMap = getCategoryMap(categories)
+  
+  const detailedTotals = {}
   for (const tx of txs) {
-    if (tx.category in totals) {
-      totals[tx.category] += Number(tx.amount) || 0
-    }
+    if (!detailedTotals[tx.category]) detailedTotals[tx.category] = 0
+    detailedTotals[tx.category] += Number(tx.amount) || 0
   }
-  return totals
+  
+  return groupByParent(detailedTotals, categoryMap)
 }
 
 export async function getDetailedTransactionTotals(month) {
