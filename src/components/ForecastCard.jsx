@@ -16,7 +16,32 @@ const CAT_META = {
   invest: { label: 'Investimentos', bg: 'bg-indigo-500' },
 }
 
-export default function ForecastCard({ totals, selectedMonth, currentMonth, historicalSnapshots = [] }) {
+const METHOD_LABELS = {
+  receita_actual: 'Receita já registrada',
+  receita_historical: 'Baseado na média dos últimos meses',
+  receita_none: 'Sem dados para projetar',
+  lump_early_below: 'Baseado na sua média mensal',
+  lump_early_above: 'Mês acima da média — usando valor atual',
+  lump_mid: 'Maioria das contas já pagas',
+  lump_late: 'Quase todas as contas já pagas',
+  lump_no_history_early: 'Estimativa conservadora (sem histórico)',
+  lump_no_history_late: 'Valor atual + margem de segurança',
+  linear_pace: 'Projeção por ritmo diário',
+  linear_combined: 'Combinado: ritmo atual + histórico',
+}
+
+function getCategoryConfidence(method, dayOfMonth, historyCount) {
+  if (method.startsWith('lump_') && historyCount >= 3) return 'high'
+  if (method.startsWith('lump_') && historyCount >= 1) return 'medium'
+  if (method === 'receita_actual') return 'high'
+  if (method.startsWith('linear_') && dayOfMonth < 10) return 'low'
+  if (method.startsWith('linear_') && dayOfMonth < 20) return 'medium'
+  if (method.startsWith('linear_') && dayOfMonth >= 20) return 'high'
+  if (method.includes('no_history')) return 'low'
+  return 'medium'
+}
+
+export default function ForecastCard({ totals, selectedMonth, currentMonth, historicalSnapshots = [], prevTotals = null }) {
   const [detailsOpen, setDetailsOpen] = useState(false)
 
   const isCurrentMonth = selectedMonth === currentMonth
@@ -47,6 +72,7 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
   const pctGasto = Math.min((currentExpenses / receita) * 100, 150)
   const pctProjetado = Math.min((totalExpensesProjected / receita) * 100, 150)
   const noReceita = receitaReal === 0
+  const historyCount = historicalSnapshots.filter(s => s.month !== currentMonth).length
 
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-6 space-y-4">
@@ -171,33 +197,80 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
           </button>
 
           {detailsOpen && (
-            <div className="space-y-3 pt-1">
+            <div className="space-y-4 pt-1">
               {Object.entries(CAT_META).map(([key, meta]) => {
                 const proj = projections[key]
                 if (!proj) return null
+                
+                const catConfidence = getCategoryConfidence(proj.method, dayOfMonth, historyCount)
+                const catConfBadge = CONFIDENCE_BADGE[catConfidence]
+                const prevValue = prevTotals?.[key] || null
+                const reference = prevValue || (proj.projected > 0 ? proj.projected : 1)
+                const pctVsPrev = prevValue ? Math.round((proj.current / prevValue) * 100) : null
+
+                // Explicação do método
+                let explanation = METHOD_LABELS[proj.method] || proj.method
+                if (proj.method === 'linear_combined' && daysRemaining > 0) {
+                  const dailyRate = Math.round((proj.current / dayOfMonth) * 100) / 100
+                  explanation = `Ritmo atual: ${BRL(dailyRate)}/dia × ${daysRemaining} dias restantes`
+                }
+
                 return (
-                  <div key={key} className="space-y-1.5">
+                  <div key={key} className="space-y-1.5 pb-3 border-b border-gray-100 dark:border-gray-800 last:border-0 last:pb-0">
+                    {/* Header: Label + Confidence Badge */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className={`w-2.5 h-2.5 rounded-full ${meta.bg}`} />
-                        <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{meta.label}</span>
+                        <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{meta.label}</span>
                       </div>
-                      <span className="text-[10px] text-gray-500 dark:text-gray-400">
-                        Atual: <strong>{BRL(proj.current)}</strong> → Projetado: <strong>{BRL(proj.projected)}</strong>
+                      <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-semibold ${catConfBadge.cls}`}>
+                        {catConfBadge.label} {catConfidence === 'high' ? '✓' : catConfidence === 'low' ? '⚠' : ''}
                       </span>
                     </div>
+
+                    {/* Values: Atual, Projetado, Mês anterior (se existir) */}
+                    <div className="grid grid-cols-3 gap-2 text-[10px]">
+                      <div>
+                        <p className="text-gray-400 dark:text-gray-500 uppercase font-semibold mb-0.5">Atual</p>
+                        <p className="font-bold text-gray-800 dark:text-gray-100">{BRL(proj.current)}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-400 dark:text-gray-500 uppercase font-semibold mb-0.5">Projetado</p>
+                        <p className="font-bold text-gray-800 dark:text-gray-100">{BRL(proj.projected)}</p>
+                      </div>
+                      {prevValue !== null && (
+                        <div>
+                          <p className="text-gray-400 dark:text-gray-500 uppercase font-semibold mb-0.5">Mês anterior</p>
+                          <p className="font-bold text-gray-800 dark:text-gray-100">{BRL(prevValue)}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Progress bar: current vs reference (prev month or projected) */}
                     <div className="relative h-2 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
                       {proj.projected > proj.current && (
                         <div
                           className={`absolute inset-y-0 left-0 rounded-full opacity-40 ${meta.bg}`}
-                          style={{ width: `${Math.min((proj.projected / receita) * 100, 100)}%` }}
+                          style={{ width: `${Math.min((proj.projected / reference) * 100, 100)}%` }}
                         />
                       )}
                       <div
                         className={`absolute inset-y-0 left-0 rounded-full ${meta.bg}`}
-                        style={{ width: `${Math.min((proj.current / receita) * 100, 100)}%` }}
+                        style={{ width: `${Math.min((proj.current / reference) * 100, 100)}%` }}
                       />
                     </div>
+
+                    {/* Progress label */}
+                    {pctVsPrev !== null && (
+                      <p className="text-[9px] text-gray-400 dark:text-gray-500">
+                        {pctVsPrev}% do mês anterior
+                      </p>
+                    )}
+
+                    {/* Method explanation */}
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400 italic">
+                      {explanation}
+                    </p>
                   </div>
                 )
               })}

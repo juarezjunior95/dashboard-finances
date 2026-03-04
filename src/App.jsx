@@ -562,6 +562,7 @@ export default function App() {
                 selectedMonth={selectedMonth}
                 currentMonth={currentMonth}
                 historicalSnapshots={allSnapshots}
+                prevTotals={prevTotals}
               />
             )}
 

@@ -2,43 +2,85 @@ import { getDaysInMonth, getDate } from 'date-fns'
 
 const BRL = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-function projectCategory(currentAmount, dayOfMonth, daysInMonth, historicalValues) {
+/**
+ * Projeção para categorias com gastos PONTUAIS (fixas, invest).
+ * Lógica: gastos pontuais geralmente já foram pagos no início do mês.
+ */
+function projectLumpSum(currentAmount, dayOfMonth, daysInMonth, historicalValues) {
+  const validHistory = historicalValues.filter(v => v > 0)
+  
+  if (validHistory.length >= 2) {
+    const avgHistorical = validHistory.reduce((s, v) => s + v, 0) / validHistory.length
+    
+    if (dayOfMonth >= 20) {
+      return { projected: Math.max(currentAmount, avgHistorical * 0.9), method: 'lump_late' }
+    }
+    
+    if (dayOfMonth >= 10) {
+      return { projected: Math.max(currentAmount, avgHistorical), method: 'lump_mid' }
+    }
+    
+    if (currentAmount >= avgHistorical) {
+      return { projected: currentAmount * 1.05, method: 'lump_early_above' }
+    }
+    return { projected: avgHistorical, method: 'lump_early_below' }
+  }
+  
+  if (dayOfMonth >= 15) {
+    return { projected: currentAmount * 1.1, method: 'lump_no_history_late' }
+  }
+  return { projected: currentAmount * 1.5, method: 'lump_no_history_early' }
+}
+
+/**
+ * Projeção para categorias com gastos DIÁRIOS/CONTÍNUOS (cartão).
+ * Usa projeção linear (pace) combinada com histórico.
+ */
+function projectLinear(currentAmount, dayOfMonth, daysInMonth, historicalValues) {
   const paceProjection = dayOfMonth > 0 ? (currentAmount / dayOfMonth) * daysInMonth : 0
   const validHistory = historicalValues.filter(v => v > 0)
-
+  
   if (validHistory.length < 2) {
-    return { projected: Math.round(paceProjection * 100) / 100, method: 'pace' }
+    return { projected: Math.round(paceProjection * 100) / 100, method: 'linear_pace' }
   }
-
+  
   const avgHistorical = validHistory.reduce((s, v) => s + v, 0) / validHistory.length
-
+  
   let paceWeight
   if (dayOfMonth >= 20) paceWeight = 0.8
   else if (dayOfMonth >= 10) paceWeight = 0.6
   else paceWeight = 0.3
-
+  
   const projected = paceProjection * paceWeight + avgHistorical * (1 - paceWeight)
-  return { projected: Math.round(projected * 100) / 100, method: 'combined' }
+  return { projected: Math.round(projected * 100) / 100, method: 'linear_combined' }
 }
 
-function projectReceita(currentReceita, historicalValues) {
-  if (currentReceita > 0) {
-    return { projected: currentReceita, method: 'actual', confidence: 'high' }
+/**
+ * Projeção para receita (valor fixo/pontual).
+ */
+function projectReceita(currentAmount, historicalValues) {
+  if (currentAmount > 0) {
+    return { projected: currentAmount, method: 'receita_actual' }
   }
-
   const valid = historicalValues.filter(v => v > 0)
   if (valid.length >= 2) {
     const avg = valid.reduce((s, v) => s + v, 0) / valid.length
-    return { projected: Math.round(avg * 100) / 100, method: 'historical', confidence: 'medium' }
+    return { projected: Math.round(avg * 100) / 100, method: 'receita_historical' }
   }
-
-  return { projected: 0, method: 'none', confidence: 'low' }
+  return { projected: 0, method: 'receita_none' }
 }
 
 function getConfidence(dayOfMonth, historyCount) {
   if (dayOfMonth >= 20 || historyCount >= 3) return 'high'
   if (dayOfMonth >= 10) return 'medium'
   return 'low'
+}
+
+const CATEGORY_MODELS = {
+  receita: 'receita',
+  fixas: 'lump_sum',
+  cartao: 'linear',
+  invest: 'lump_sum',
 }
 
 export function forecastMonth({ currentTotals, dayOfMonth, daysInMonth, historicalSnapshots = [] }) {
@@ -49,24 +91,30 @@ export function forecastMonth({ currentTotals, dayOfMonth, daysInMonth, historic
   const recent = historicalSnapshots.slice(-6)
   const historyCount = recent.length
 
-  const receitaResult = projectReceita(
-    Number(currentTotals.receita) || 0,
-    recent.map(s => Number(s.receita) || 0),
-  )
+  const projections = {}
+  const cats = ['receita', 'fixas', 'cartao', 'invest']
 
-  const projections = {
-    receita: {
-      current: Number(currentTotals.receita) || 0,
-      projected: receitaResult.projected,
-      confidence: receitaResult.confidence,
-    },
-  }
-
-  for (const cat of ['fixas', 'cartao', 'invest']) {
+  for (const cat of cats) {
     const current = Number(currentTotals[cat]) || 0
     const histValues = recent.map(s => Number(s[cat]) || 0)
-    const { projected } = projectCategory(current, day, totalDays, histValues)
-    projections[cat] = { current, projected, confidence: getConfidence(day, historyCount) }
+    const model = CATEGORY_MODELS[cat]
+    
+    let result
+    if (model === 'receita') {
+      result = projectReceita(current, histValues)
+    } else if (model === 'lump_sum') {
+      result = projectLumpSum(current, day, totalDays, histValues)
+    } else {
+      result = projectLinear(current, day, totalDays, histValues)
+    }
+    
+    const confidence = getConfidence(day, historyCount)
+    projections[cat] = { 
+      current, 
+      projected: Math.round(result.projected * 100) / 100, 
+      method: result.method,
+      confidence 
+    }
   }
 
   const totalExpensesProjected = projections.fixas.projected + projections.cartao.projected + projections.invest.projected
