@@ -76,6 +76,45 @@ function getConfidence(dayOfMonth, historyCount) {
   return 'low'
 }
 
+// História 4: Sugestão de alerta pré-calculada
+function buildAlertSuggestion({ currentSaldo, receitaProjetada, orcamentoDiario, daysRemaining, confidence, projectedSaldo }) {
+  // Já estourou — fato concreto
+  if (currentSaldo < 0) {
+    return {
+      shouldAlert: true,
+      severity: 'danger',
+      title: 'Gastos acima da receita',
+      message: `Seus gastos já ultrapassaram a receita em ${BRL(Math.abs(currentSaldo))}.`,
+      action: 'Evite novos gastos e revise despesas que podem ser canceladas.',
+    }
+  }
+  
+  // Margem apertada — fato concreto
+  if (currentSaldo > 0 && currentSaldo < receitaProjetada * 0.1) {
+    return {
+      shouldAlert: true,
+      severity: 'warning',
+      title: 'Margem apertada',
+      message: `Sobram ${BRL(currentSaldo)} para os próximos ${daysRemaining} dia${daysRemaining !== 1 ? 's' : ''}.`,
+      action: `Limite seus gastos a ${BRL(orcamentoDiario)}/dia para terminar no positivo.`,
+    }
+  }
+  
+  // Projeção negativa com confiança alta — alerta informativo
+  if (confidence === 'high' && projectedSaldo < 0 && currentSaldo > 0) {
+    return {
+      shouldAlert: true,
+      severity: 'info',
+      title: 'Tendência de gastos elevados',
+      message: `Com base no seu padrão, os gastos podem se aproximar da receita. Disponível hoje: ${BRL(currentSaldo)}.`,
+      action: `Mantenha gastos abaixo de ${BRL(orcamentoDiario)}/dia.`,
+    }
+  }
+  
+  // Tudo ok
+  return { shouldAlert: false }
+}
+
 const CATEGORY_MODELS = {
   receita: 'receita',
   fixas: 'lump_sum',
@@ -127,9 +166,22 @@ export function forecastMonth({ currentTotals, dayOfMonth, daysInMonth, historic
   const percentProjected = Math.round((totalExpensesProjected / receita) * 1000) / 10
   const confidence = getConfidence(day, historyCount)
 
+  // História 1: Calcular riskLevel baseado na REALIDADE + confiança da projeção
   let riskLevel = 'safe'
-  if (projectedSaldo < -(receita * 0.1)) riskLevel = 'danger'
-  else if (projectedSaldo < 0) riskLevel = 'attention'
+  
+  if (currentSaldo < 0) {
+    // Já estourou — fato, não projeção
+    riskLevel = 'danger'
+  } else if (currentSaldo < receitaProjetada * 0.1) {
+    // Margem apertada — fato
+    riskLevel = 'attention'
+  } else if (confidence === 'high' && projectedSaldo < 0) {
+    // Projeção confiável (dia 20+ ou 3+ meses de histórico) indica risco
+    riskLevel = 'attention'
+  } else {
+    // Saldo positivo com folga, projeção incerta não gera alarme
+    riskLevel = 'safe'
+  }
 
   const orcamentoDisponivel = currentSaldo
   const orcamentoDiario = daysRemaining > 0
@@ -170,5 +222,14 @@ export function forecastMonth({ currentTotals, dayOfMonth, daysInMonth, historic
     orcamentoDisponivel,
     orcamentoDiario,
     currentExpenses,
+    // História 4: Sugestão de alerta pré-calculada
+    alertSuggestion: buildAlertSuggestion({
+      currentSaldo,
+      receitaProjetada,
+      orcamentoDiario,
+      daysRemaining,
+      confidence,
+      projectedSaldo,
+    }),
   }
 }

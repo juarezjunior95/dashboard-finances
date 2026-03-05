@@ -41,6 +41,38 @@ function getCategoryConfidence(method, dayOfMonth, historyCount) {
   return 'medium'
 }
 
+// História 3: determinar status da categoria
+function getCategoryStatus(cat, proj, dayOfMonth, prevValue, avgHistorical) {
+  const { current, projected, method } = proj
+  
+  // Categorias lump_sum (fixas, invest): comparar com média/anterior
+  if (method.startsWith('lump_') || method.startsWith('receita')) {
+    const reference = avgHistorical || prevValue || 0
+    if (reference === 0) return { status: 'neutral', label: 'Sem referência' }
+    const pct = (current / reference) * 100
+    if (pct > 120) return { status: 'warning', label: 'Acima da média' }
+    if (pct > 90) return { status: 'ok', label: 'Normal' }
+    return { status: 'good', label: 'Abaixo da média' }
+  }
+  
+  // Categorias lineares (cartão): analisar ritmo
+  if (dayOfMonth < 10) {
+    return { status: 'neutral', label: 'Acompanhe' }
+  }
+  const reference = prevValue || avgHistorical || projected
+  if (projected > reference * 1.2) return { status: 'warning', label: 'Acima do padrão' }
+  if (projected > reference) return { status: 'attention', label: 'Atenção' }
+  return { status: 'ok', label: 'Normal' }
+}
+
+const STATUS_BADGE = {
+  ok: { label: '✓ Normal', cls: 'text-emerald-600 dark:text-emerald-400' },
+  good: { label: '✓ Ok', cls: 'text-emerald-600 dark:text-emerald-400' },
+  attention: { label: '⚠ Atenção', cls: 'text-amber-600 dark:text-amber-400' },
+  warning: { label: '⚠ Acima do padrão', cls: 'text-amber-600 dark:text-amber-400' },
+  neutral: { label: 'Acompanhe', cls: 'text-gray-500 dark:text-gray-400' },
+}
+
 export default function ForecastCard({ totals, selectedMonth, currentMonth, historicalSnapshots = [], prevTotals = null }) {
   const [detailsOpen, setDetailsOpen] = useState(false)
 
@@ -73,6 +105,20 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
   const pctProjetado = Math.min((totalExpensesProjected / receita) * 100, 150)
   const noReceita = receitaReal === 0
   const historyCount = historicalSnapshots.filter(s => s.month !== currentMonth).length
+  
+  // Calcular médias históricas para cada categoria
+  const historicalAvg = useMemo(() => {
+    const validSnapshots = historicalSnapshots.filter(s => s.month !== currentMonth && s.month)
+    if (validSnapshots.length === 0) return {}
+    const avg = {}
+    for (const cat of ['fixas', 'cartao', 'invest']) {
+      const values = validSnapshots.map(s => Number(s[cat]) || 0).filter(v => v > 0)
+      if (values.length > 0) {
+        avg[cat] = Math.round((values.reduce((s, v) => s + v, 0) / values.length) * 100) / 100
+      }
+    }
+    return avg
+  }, [historicalSnapshots, currentMonth])
 
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-6 space-y-4">
@@ -202,75 +248,123 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
                 const proj = projections[key]
                 if (!proj) return null
                 
-                const catConfidence = getCategoryConfidence(proj.method, dayOfMonth, historyCount)
-                const catConfBadge = CONFIDENCE_BADGE[catConfidence]
                 const prevValue = prevTotals?.[key] || null
-                const reference = prevValue || (proj.projected > 0 ? proj.projected : 1)
-                const pctVsPrev = prevValue ? Math.round((proj.current / prevValue) * 100) : null
-
-                // Explicação do método
-                let explanation = METHOD_LABELS[proj.method] || proj.method
-                if (proj.method === 'linear_combined' && daysRemaining > 0) {
-                  const dailyRate = Math.round((proj.current / dayOfMonth) * 100) / 100
-                  explanation = `Ritmo atual: ${BRL(dailyRate)}/dia × ${daysRemaining} dias restantes`
-                }
+                const avgHistValue = historicalAvg[key] || null
+                const catStatus = getCategoryStatus(key, proj, dayOfMonth, prevValue, avgHistValue)
+                const statusBadge = STATUS_BADGE[catStatus.status]
+                const isLumpSum = proj.method.startsWith('lump_') || proj.method.startsWith('receita')
+                const isLinear = proj.method.startsWith('linear_')
+                
+                // Referência para barra de progresso
+                const reference = prevValue || avgHistValue || 1
 
                 return (
-                  <div key={key} className="space-y-1.5 pb-3 border-b border-gray-100 dark:border-gray-800 last:border-0 last:pb-0">
-                    {/* Header: Label + Confidence Badge */}
+                  <div key={key} className="space-y-2 pb-3 border-b border-gray-100 dark:border-gray-800 last:border-0 last:pb-0">
+                    {/* Header: Label + Status */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className={`w-2.5 h-2.5 rounded-full ${meta.bg}`} />
                         <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{meta.label}</span>
                       </div>
-                      <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-semibold ${catConfBadge.cls}`}>
-                        {catConfBadge.label} {catConfidence === 'high' ? '✓' : catConfidence === 'low' ? '⚠' : ''}
+                      <span className={`text-[10px] font-semibold ${statusBadge.cls}`}>
+                        {statusBadge.label}
                       </span>
                     </div>
 
-                    {/* Values: Atual, Projetado, Mês anterior (se existir) */}
-                    <div className="grid grid-cols-3 gap-2 text-[10px]">
-                      <div>
-                        <p className="text-gray-400 dark:text-gray-500 uppercase font-semibold mb-0.5">Atual</p>
-                        <p className="font-bold text-gray-800 dark:text-gray-100">{BRL(proj.current)}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-400 dark:text-gray-500 uppercase font-semibold mb-0.5">Projetado</p>
-                        <p className="font-bold text-gray-800 dark:text-gray-100">{BRL(proj.projected)}</p>
-                      </div>
-                      {prevValue !== null && (
-                        <div>
-                          <p className="text-gray-400 dark:text-gray-500 uppercase font-semibold mb-0.5">Mês anterior</p>
-                          <p className="font-bold text-gray-800 dark:text-gray-100">{BRL(prevValue)}</p>
+                    {/* Layout para lump_sum (fixas, invest) */}
+                    {isLumpSum && (
+                      <>
+                        <div className="grid grid-cols-3 gap-2 text-[10px]">
+                          <div>
+                            <p className="text-gray-400 dark:text-gray-500 uppercase font-semibold mb-0.5">Gasto atual</p>
+                            <p className="font-bold text-gray-800 dark:text-gray-100">{BRL(proj.current)}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-400 dark:text-gray-500 uppercase font-semibold mb-0.5">Média mensal</p>
+                            <p className="font-bold text-gray-800 dark:text-gray-100">
+                              {avgHistValue ? BRL(avgHistValue) : '—'}
+                            </p>
+                          </div>
+                          {prevValue !== null && (
+                            <div>
+                              <p className="text-gray-400 dark:text-gray-500 uppercase font-semibold mb-0.5">Mês anterior</p>
+                              <p className="font-bold text-gray-800 dark:text-gray-100">{BRL(prevValue)}</p>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
 
-                    {/* Progress bar: current vs reference (prev month or projected) */}
-                    <div className="relative h-2 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                      {proj.projected > proj.current && (
-                        <div
-                          className={`absolute inset-y-0 left-0 rounded-full opacity-40 ${meta.bg}`}
-                          style={{ width: `${Math.min((proj.projected / reference) * 100, 100)}%` }}
-                        />
-                      )}
-                      <div
-                        className={`absolute inset-y-0 left-0 rounded-full ${meta.bg}`}
-                        style={{ width: `${Math.min((proj.current / reference) * 100, 100)}%` }}
-                      />
-                    </div>
+                        {/* Barra: atual vs média */}
+                        {(avgHistValue || prevValue) && (
+                          <div className="relative h-2 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                            <div
+                              className={`absolute inset-y-0 left-0 rounded-full ${meta.bg}`}
+                              style={{ width: `${Math.min((proj.current / reference) * 100, 100)}%` }}
+                            />
+                          </div>
+                        )}
 
-                    {/* Progress label */}
-                    {pctVsPrev !== null && (
-                      <p className="text-[9px] text-gray-400 dark:text-gray-500">
-                        {pctVsPrev}% do mês anterior
-                      </p>
+                        {/* Comparação com mês anterior */}
+                        {prevValue !== null && prevValue > 0 && (
+                          <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                            {proj.current > prevValue 
+                              ? `+${Math.round(((proj.current - prevValue) / prevValue) * 100)}% em relação ao mês anterior`
+                              : `${Math.round(((proj.current - prevValue) / prevValue) * 100)}% em relação ao mês anterior`
+                            }
+                          </p>
+                        )}
+                      </>
                     )}
 
-                    {/* Method explanation */}
-                    <p className="text-[10px] text-gray-500 dark:text-gray-400 italic">
-                      {explanation}
-                    </p>
+                    {/* Layout para linear (cartão) */}
+                    {isLinear && (
+                      <>
+                        <div className="grid grid-cols-3 gap-2 text-[10px]">
+                          <div>
+                            <p className="text-gray-400 dark:text-gray-500 uppercase font-semibold mb-0.5">Gasto atual</p>
+                            <p className="font-bold text-gray-800 dark:text-gray-100">{BRL(proj.current)}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-400 dark:text-gray-500 uppercase font-semibold mb-0.5">Ritmo diário</p>
+                            <p className="font-bold text-gray-800 dark:text-gray-100">
+                              {dayOfMonth > 0 ? BRL(Math.round((proj.current / dayOfMonth) * 100) / 100) : '—'}/dia
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-gray-400 dark:text-gray-500 uppercase font-semibold mb-0.5">Projeção</p>
+                            <p className="font-bold text-gray-800 dark:text-gray-100">~{BRL(proj.projected)}</p>
+                          </div>
+                        </div>
+
+                        {/* Barra: atual vs mês anterior */}
+                        {prevValue && (
+                          <div className="relative h-2 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                            <div
+                              className={`absolute inset-y-0 left-0 rounded-full ${meta.bg}`}
+                              style={{ width: `${Math.min((proj.current / prevValue) * 100, 100)}%` }}
+                            />
+                          </div>
+                        )}
+
+                        {/* Comparação e avisos */}
+                        {prevValue !== null && (
+                          <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                            {Math.round((proj.current / prevValue) * 100)}% do mês anterior ({BRL(prevValue)})
+                          </p>
+                        )}
+
+                        {/* Aviso contextual baseado no dia */}
+                        {dayOfMonth < 10 && (
+                          <p className="text-[10px] text-gray-500 dark:text-gray-400 italic">
+                            Poucos dias — projeção incerta, acompanhe nos próximos dias
+                          </p>
+                        )}
+                        {dayOfMonth >= 10 && proj.projected > (prevValue || 0) && (
+                          <p className="text-[10px] text-amber-600 dark:text-amber-400 italic">
+                            ⚠ No ritmo atual, pode ultrapassar o mês anterior
+                          </p>
+                        )}
+                      </>
+                    )}
                   </div>
                 )
               })}

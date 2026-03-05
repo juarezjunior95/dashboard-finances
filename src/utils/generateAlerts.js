@@ -78,16 +78,17 @@ export function generateAlerts({
     }
   }
 
-  // 3. Projeção de saldo negativo (warning) - skip if already saldo negativo
-  if (!hasSaldoNegativo && isCurrentMonth && forecast?.riskLevel === 'danger') {
+  // 3. Alerta baseado na projeção — SOMENTE se confiável e relevante (História 2)
+  if (!hasSaldoNegativo && isCurrentMonth && forecast?.alertSuggestion?.shouldAlert) {
+    const sug = forecast.alertSuggestion
     alerts.push({
-      id: 'forecast-danger',
-      type: 'forecast-danger',
-      severity: 'warning',
-      icon: '📉',
-      title: 'Projeção: gastos vão superar receita',
-      message: `No ritmo atual, o mês terminará com saldo negativo de ${BRL(Math.abs(forecast.projectedSaldo))}.`,
-      action: 'Reduza gastos variáveis nos próximos dias.',
+      id: 'forecast-alert',
+      type: 'forecast-alert',
+      severity: sug.severity,
+      icon: sug.severity === 'danger' ? '🚨' : sug.severity === 'warning' ? '⚠️' : '📊',
+      title: sug.title,
+      message: sug.message,
+      action: sug.action,
       dismissable: true,
     })
   }
