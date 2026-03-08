@@ -79,9 +79,21 @@ function getActionTip(rule, status) {
   return rule.direction === 'min' ? rule.tip : rule.tipOver
 }
 
-export function analyzeFinances({ receita, fixas, cartao, invest }) {
-  if (!receita || receita <= 0) {
-    return { rules: [], overallScore: 'empty', overallMessage: '', source: SOURCE }
+/**
+ * @param {object} params
+ * @param {number} params.receita - Receita total (inclui extraordinárias)
+ * @param {number} params.fixas
+ * @param {number} params.cartao
+ * @param {number} params.invest
+ * @param {number} [params.recurringIncome] - Receita recorrente (salário). Se fornecida, é usada como base.
+ */
+export function analyzeFinances({ receita, fixas, cartao, invest, recurringIncome }) {
+  // Usa receita recorrente como base se disponível e > 0; senão, receita total (fallback legado)
+  const incomeBase = (recurringIncome && recurringIncome > 0) ? recurringIncome : receita
+  const hasRecurringBreakdown = recurringIncome != null && recurringIncome > 0
+
+  if (!incomeBase || incomeBase <= 0) {
+    return { rules: [], overallScore: 'empty', overallMessage: '', source: SOURCE, incomeBase: 0, hasRecurringBreakdown }
   }
 
   const values = { fixas, cartao, invest }
@@ -90,7 +102,7 @@ export function analyzeFinances({ receita, fixas, cartao, invest }) {
 
   const rules = RULES.map(rule => {
     const spent = values[rule.category] || 0
-    const actual = (spent / receita) * 100
+    const actual = (spent / incomeBase) * 100
     const status = getStatus(actual, rule.idealPct, rule.direction)
     const message = buildMessage(rule, actual)
     const actionTip = getActionTip(rule, status)
@@ -98,7 +110,7 @@ export function analyzeFinances({ receita, fixas, cartao, invest }) {
     if (status === 'danger') dangerCount++
     if (status === 'warning') warningCount++
 
-    const idealAmount = Math.round((receita * rule.idealPct / 100) * 100) / 100
+    const idealAmount = Math.round((incomeBase * rule.idealPct / 100) * 100) / 100
     const diff = rule.direction === 'max'
       ? idealAmount - spent
       : spent - idealAmount
@@ -134,7 +146,7 @@ export function analyzeFinances({ receita, fixas, cartao, invest }) {
     overallMessage = 'Quase tudo em ordem, mas ha um ponto que merece atencao.'
   }
 
-  return { rules, overallScore, overallMessage, source: SOURCE }
+  return { rules, overallScore, overallMessage, source: SOURCE, incomeBase, hasRecurringBreakdown }
 }
 
 export { RULES, SOURCE }

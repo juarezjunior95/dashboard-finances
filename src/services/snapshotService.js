@@ -53,7 +53,7 @@ export async function getSnapshot(month) {
   }
 }
 
-export async function upsertSnapshot({ month, receita, fixas, cartao, invest }) {
+export async function upsertSnapshot({ month, receita, fixas, cartao, invest, recurring_income, extraordinary_income, reserve_usage, real_balance }) {
   if (!/^\d{4}-\d{2}$/.test(month)) {
     throw new Error('Mês inválido. Use YYYY-MM.')
   }
@@ -66,11 +66,21 @@ export async function upsertSnapshot({ month, receita, fixas, cartao, invest }) 
     invest: Number(invest) || 0,
   }
 
+  // Only include new optional fields if explicitly provided (not undefined)
+  if (recurring_income !== undefined) payload.recurring_income = recurring_income != null ? Number(recurring_income) : null
+  if (extraordinary_income !== undefined) payload.extraordinary_income = extraordinary_income != null ? Number(extraordinary_income) : null
+  if (reserve_usage !== undefined) payload.reserve_usage = reserve_usage != null ? Number(reserve_usage) : null
+  if (real_balance !== undefined) {
+    payload.real_balance = real_balance != null ? Number(real_balance) : null
+    if (real_balance != null) payload.real_balance_updated_at = new Date().toISOString()
+  }
+
   const user = await getUser()
 
   if (!user) {
     const store = getStore()
     store[month] = {
+      ...store[month],
       id: store[month]?.id || crypto.randomUUID(),
       ...payload,
       created_at: store[month]?.created_at || new Date().toISOString(),
@@ -80,14 +90,34 @@ export async function upsertSnapshot({ month, receita, fixas, cartao, invest }) 
     return store[month]
   }
 
-  const { data, error } = await supabase
+  // Try update first to avoid overwriting optional fields not included in payload
+  const { data: existing } = await supabase
     .from('monthly_snapshots')
-    .upsert(
-      { user_id: user.id, ...payload },
-      { onConflict: 'user_id,month' },
-    )
-    .select()
-    .single()
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('month', month)
+    .maybeSingle()
+
+  let data, error
+  if (existing) {
+    const result = await supabase
+      .from('monthly_snapshots')
+      .update(payload)
+      .eq('user_id', user.id)
+      .eq('month', month)
+      .select()
+      .single()
+    data = result.data
+    error = result.error
+  } else {
+    const result = await supabase
+      .from('monthly_snapshots')
+      .insert({ user_id: user.id, ...payload })
+      .select()
+      .single()
+    data = result.data
+    error = result.error
+  }
 
   if (error) {
     const store = getStore()
@@ -100,6 +130,32 @@ export async function upsertSnapshot({ month, receita, fixas, cartao, invest }) 
   store[month] = data
   setStore(store)
   return data
+}
+
+/**
+ * Retorna breakdown de receita com fallback para legado.
+ * Se recurring_income estiver preenchido, usa a separação; senão, trata receita como recorrente.
+ */
+export function getEffectiveIncome(snapshot) {
+  if (!snapshot) {
+    return { recurring: 0, extraordinary: 0, reserve: 0, total: 0, hasBreakdown: false }
+  }
+  if (snapshot.recurring_income != null) {
+    return {
+      recurring: Number(snapshot.recurring_income) || 0,
+      extraordinary: Number(snapshot.extraordinary_income) || 0,
+      reserve: Number(snapshot.reserve_usage) || 0,
+      total: Number(snapshot.receita) || 0,
+      hasBreakdown: true,
+    }
+  }
+  return {
+    recurring: Number(snapshot.receita) || 0,
+    extraordinary: 0,
+    reserve: 0,
+    total: Number(snapshot.receita) || 0,
+    hasBreakdown: false,
+  }
 }
 
 export async function listMonths() {

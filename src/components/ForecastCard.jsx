@@ -73,7 +73,7 @@ const STATUS_BADGE = {
   neutral: { label: 'Acompanhe', cls: 'text-gray-500 dark:text-gray-400' },
 }
 
-export default function ForecastCard({ totals, selectedMonth, currentMonth, historicalSnapshots = [], prevTotals = null }) {
+export default function ForecastCard({ totals, selectedMonth, currentMonth, historicalSnapshots = [], prevTotals = null, incomeBreakdown = null, realBalance = null }) {
   const [detailsOpen, setDetailsOpen] = useState(false)
 
   const isCurrentMonth = selectedMonth === currentMonth
@@ -87,8 +87,11 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
       dayOfMonth: getDate(now),
       daysInMonth: getDaysInMonth(now),
       historicalSnapshots: historicalSnapshots.filter(s => s.month !== currentMonth).slice(-6),
+      recurringIncome: incomeBreakdown?.hasBreakdown ? incomeBreakdown.recurring : undefined,
+      extraordinaryIncome: incomeBreakdown?.extraordinary,
+      reserveUsage: incomeBreakdown?.reserve,
     })
-  }, [totals, isCurrentMonth, hasData, historicalSnapshots, currentMonth])
+  }, [totals, isCurrentMonth, hasData, historicalSnapshots, currentMonth, incomeBreakdown])
 
   if (!forecast) return null
 
@@ -135,13 +138,18 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
         </span>
       </div>
 
-      {/* KPIs: Receita, Já gasto, Disponível */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* KPIs: Receita, Já gasto, Disponível, (Saldo Real) */}
+      <div className={`grid gap-3 ${realBalance != null && realBalance > 0 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
         <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3">
-          <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase">Receita</p>
-          <p className="text-sm sm:text-base font-bold text-emerald-600 dark:text-emerald-400">
-            {noReceita ? '—' : BRL(receitaReal)}
+          <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase">
+            {forecast.hasRecurringBreakdown ? 'Receita Recorrente' : 'Receita'}
           </p>
+          <p className="text-sm sm:text-base font-bold text-emerald-600 dark:text-emerald-400">
+            {noReceita ? '—' : BRL(forecast.hasRecurringBreakdown ? forecast.recurringIncome : receitaReal)}
+          </p>
+          {forecast.hasRecurringBreakdown && forecast.extraordinaryIncome > 0 && (
+            <p className="text-[10px] text-cyan-600 dark:text-cyan-400">+{BRL(forecast.extraordinaryIncome)} extra</p>
+          )}
           {noReceita && (
             <p className="text-[10px] text-gray-400 dark:text-gray-500">Sem receita</p>
           )}
@@ -178,6 +186,15 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
             </p>
           )}
         </div>
+        {realBalance != null && realBalance > 0 && (
+          <div className="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/50 p-3">
+            <p className="text-[10px] font-semibold text-indigo-500 dark:text-indigo-400 uppercase">Saldo Real</p>
+            <p className="text-sm sm:text-base font-bold text-indigo-600 dark:text-indigo-400">
+              {BRL(realBalance)}
+            </p>
+            <p className="text-[10px] text-gray-400 dark:text-gray-500">Conta bancária</p>
+          </div>
+        )}
       </div>
 
       {/* Progress bar */}

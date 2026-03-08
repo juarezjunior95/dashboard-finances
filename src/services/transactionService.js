@@ -60,7 +60,7 @@ export async function listTransactions(month) {
   }
 }
 
-export async function upsertTransaction({ id, month, category, description, amount, date, source }) {
+export async function upsertTransaction({ id, month, category, description, amount, date, source, payment_status }) {
   if (!/^\d{4}-\d{2}$/.test(month)) {
     throw new Error('Mês inválido. Use YYYY-MM.')
   }
@@ -72,6 +72,7 @@ export async function upsertTransaction({ id, month, category, description, amou
     amount: Number(amount) || 0,
     date: date || null,
     source: source || 'manual',
+    payment_status: payment_status || null,
   }
 
   const user = await getUser()
@@ -292,6 +293,53 @@ export async function clearTransactions(month) {
   setStore(store)
 }
 
+// Receita separada por income_type (recurring, extraordinary, reserve)
+export async function getIncomeTotals(month, categories) {
+  const txs = await listTransactions(month)
+  const result = { recurring: 0, extraordinary: 0, reserve: 0 }
+  for (const tx of txs) {
+    const cat = categories.find(c => c.key === tx.category)
+    const parent = cat?.parent_category || tx.category
+    if (parent !== 'receita') continue
+    const incomeType = cat?.income_type || 'recurring'
+    if (incomeType in result) {
+      result[incomeType] += Number(tx.amount) || 0
+    } else {
+      result.recurring += Number(tx.amount) || 0
+    }
+  }
+  return result
+}
+
+// Despesas separadas por payment_status (paid, pending, unknown)
+export async function getExpensesByStatus(month) {
+  const txs = await listTransactions(month)
+  const result = { paid: 0, pending: 0, unknown: 0 }
+  const incomeCategories = ['receita', 'salario', 'extraordinario', 'reserva_uso']
+
+  let parentMap = {}
+  try {
+    const catsRaw = localStorage.getItem('user_categories')
+    if (catsRaw) {
+      const cats = JSON.parse(catsRaw)
+      for (const c of cats) parentMap[c.key] = c.parent_category || c.key
+    }
+  } catch { /* ignore */ }
+
+  for (const tx of txs) {
+    if (incomeCategories.includes(tx.category)) continue
+    const parent = parentMap[tx.category] || tx.category
+    if (parent === 'receita') continue
+    const status = tx.payment_status || 'unknown'
+    if (status in result) {
+      result[status] += Number(tx.amount) || 0
+    } else {
+      result.unknown += Number(tx.amount) || 0
+    }
+  }
+  return result
+}
+
 export async function bulkInsertTransactions(month, transactions) {
   if (!/^\d{4}-\d{2}$/.test(month)) {
     throw new Error('Mês inválido. Use YYYY-MM.')
@@ -305,6 +353,7 @@ export async function bulkInsertTransactions(month, transactions) {
     amount: Number(tx.amount) || 0,
     date: tx.date || null,
     source: tx.source || 'import',
+    payment_status: tx.payment_status || null,
   }))
 
   if (!user) {

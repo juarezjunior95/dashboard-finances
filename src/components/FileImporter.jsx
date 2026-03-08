@@ -71,8 +71,19 @@ function findColumns(headers) {
   const descIdx = lower.findIndex((h) =>
     ['descricao', 'descrição', 'description', 'desc', 'nome', 'name', 'historico', 'histórico'].includes(h),
   )
+  const statusIdx = lower.findIndex((h) =>
+    ['status', 'situacao', 'situação', 'pago', 'estado'].includes(h),
+  )
 
-  return { catIdx, valIdx, dateIdx, descIdx }
+  return { catIdx, valIdx, dateIdx, descIdx, statusIdx }
+}
+
+function normalizePaymentStatus(raw) {
+  if (!raw) return null
+  const s = String(raw).trim().toLowerCase()
+  if (['pago', 'paid', 'sim', 'yes', '1', 'ok'].includes(s)) return 'paid'
+  if (['pendente', 'pending', 'nao', 'não', 'no', '0'].includes(s)) return 'pending'
+  return null
 }
 
 function tryParseDate(raw) {
@@ -94,7 +105,7 @@ function normalizeRows(rawRows, catMap) {
   if (!rawRows.length) return { rows: [], unmapped: {} }
 
   const headers = rawRows[0]
-  const { catIdx, valIdx, dateIdx, descIdx } = findColumns(headers)
+  const { catIdx, valIdx, dateIdx, descIdx, statusIdx } = findColumns(headers)
 
   if (catIdx === -1 || valIdx === -1) {
     throw new Error(
@@ -119,18 +130,19 @@ function normalizeRows(rawRows, catMap) {
 
     const descricao = descIdx !== -1 ? String(row[descIdx] ?? '').trim() : rawCat
     const data = dateIdx !== -1 ? tryParseDate(row[dateIdx]) : null
+    const payment_status = statusIdx !== -1 ? normalizePaymentStatus(row[statusIdx]) : null
 
     if (categoria === null) {
       const key = rawCat.toLowerCase()
       if (key) {
         if (!unmapped[key]) unmapped[key] = { original: rawCat, count: 0, rows: [] }
         unmapped[key].count++
-        unmapped[key].rows.push({ valor, descricao, data, rawIdx: i })
+        unmapped[key].rows.push({ valor, descricao, data, payment_status, rawIdx: i })
       }
       continue
     }
 
-    rows.push({ categoria, valor, descricao, data })
+    rows.push({ categoria, valor, descricao, data, payment_status })
   }
 
   return { rows, unmapped }
@@ -326,6 +338,7 @@ export default function FileImporter({ onTotals, month }) {
         amount: row.valor,
         date: row.data || null,
         source: 'import',
+        payment_status: row.payment_status || null,
       })))
     }
 
@@ -422,7 +435,7 @@ export default function FileImporter({ onTotals, month }) {
         const target = mapping[key]
         if (!target) continue
         for (const r of info.rows) {
-          extraRows.push({ categoria: target, valor: r.valor, descricao: r.descricao, data: r.data })
+          extraRows.push({ categoria: target, valor: r.valor, descricao: r.descricao, data: r.data, payment_status: r.payment_status || null })
         }
       }
       const allRows = [...pendingRows, ...extraRows]

@@ -122,7 +122,17 @@ const CATEGORY_MODELS = {
   invest: 'lump_sum',
 }
 
-export function forecastMonth({ currentTotals, dayOfMonth, daysInMonth, historicalSnapshots = [] }) {
+/**
+ * @param {object} params
+ * @param {object} params.currentTotals - { receita, fixas, cartao, invest }
+ * @param {number} [params.recurringIncome] - Receita recorrente (se disponível). Usada como base em vez de receita total.
+ * @param {number} [params.extraordinaryIncome] - Entradas extraordinárias
+ * @param {number} [params.reserveUsage] - Uso da reserva no mês
+ * @param {number} [params.dayOfMonth]
+ * @param {number} [params.daysInMonth]
+ * @param {Array} [params.historicalSnapshots]
+ */
+export function forecastMonth({ currentTotals, dayOfMonth, daysInMonth, historicalSnapshots = [], recurringIncome, extraordinaryIncome, reserveUsage }) {
   const day = dayOfMonth || getDate(new Date())
   const totalDays = daysInMonth || getDaysInMonth(new Date())
   const daysRemaining = Math.max(totalDays - day, 0)
@@ -133,14 +143,22 @@ export function forecastMonth({ currentTotals, dayOfMonth, daysInMonth, historic
   const projections = {}
   const cats = ['receita', 'fixas', 'cartao', 'invest']
 
+  // Use recurring_income from historical snapshots if available, otherwise fallback to receita
+  const receitaHistValues = recent.map(s => {
+    if (s.recurring_income != null) return Number(s.recurring_income) || 0
+    return Number(s.receita) || 0
+  })
+
   for (const cat of cats) {
     const current = Number(currentTotals[cat]) || 0
-    const histValues = recent.map(s => Number(s[cat]) || 0)
+    const histValues = cat === 'receita' ? receitaHistValues : recent.map(s => Number(s[cat]) || 0)
     const model = CATEGORY_MODELS[cat]
     
     let result
     if (model === 'receita') {
-      result = projectReceita(current, histValues)
+      // If recurringIncome is available, project based on it; otherwise use receita total
+      const receitaToProject = (recurringIncome != null && recurringIncome > 0) ? recurringIncome : current
+      result = projectReceita(receitaToProject, histValues)
     } else if (model === 'lump_sum') {
       result = projectLumpSum(current, day, totalDays, histValues)
     } else {
@@ -156,30 +174,31 @@ export function forecastMonth({ currentTotals, dayOfMonth, daysInMonth, historic
     }
   }
 
+  // Base income for budget = recurring income if available, otherwise total receita
+  const hasRecurringBreakdown = recurringIncome != null && recurringIncome > 0
+  const effectiveRecurringIncome = hasRecurringBreakdown ? recurringIncome : (Number(currentTotals.receita) || 0)
+
   const totalExpensesProjected = projections.fixas.projected + projections.cartao.projected + projections.invest.projected
   const receitaProjetada = projections.receita.projected
   const projectedSaldo = Math.round((receitaProjetada - totalExpensesProjected) * 100) / 100
   const currentExpenses = (currentTotals.fixas || 0) + (currentTotals.cartao || 0) + (currentTotals.invest || 0)
   const currentSaldo = Math.round(((currentTotals.receita || 0) - currentExpenses) * 100) / 100
-  const receita = receitaProjetada || 1
-  const percentUsed = Math.round((currentExpenses / receita) * 1000) / 10
-  const percentProjected = Math.round((totalExpensesProjected / receita) * 1000) / 10
+
+  // For budget calculations, use recurring income to avoid inflated budgets
+  const receitaBase = effectiveRecurringIncome || 1
+  const percentUsed = Math.round((currentExpenses / receitaBase) * 1000) / 10
+  const percentProjected = Math.round((totalExpensesProjected / receitaBase) * 1000) / 10
   const confidence = getConfidence(day, historyCount)
 
-  // História 1: Calcular riskLevel baseado na REALIDADE + confiança da projeção
   let riskLevel = 'safe'
   
   if (currentSaldo < 0) {
-    // Já estourou — fato, não projeção
     riskLevel = 'danger'
   } else if (currentSaldo < receitaProjetada * 0.1) {
-    // Margem apertada — fato
     riskLevel = 'attention'
   } else if (confidence === 'high' && projectedSaldo < 0) {
-    // Projeção confiável (dia 20+ ou 3+ meses de histórico) indica risco
     riskLevel = 'attention'
   } else {
-    // Saldo positivo com folga, projeção incerta não gera alarme
     riskLevel = 'safe'
   }
 
@@ -222,7 +241,10 @@ export function forecastMonth({ currentTotals, dayOfMonth, daysInMonth, historic
     orcamentoDisponivel,
     orcamentoDiario,
     currentExpenses,
-    // História 4: Sugestão de alerta pré-calculada
+    recurringIncome: effectiveRecurringIncome,
+    extraordinaryIncome: Number(extraordinaryIncome) || 0,
+    reserveUsage: Number(reserveUsage) || 0,
+    hasRecurringBreakdown,
     alertSuggestion: buildAlertSuggestion({
       currentSaldo,
       receitaProjetada,

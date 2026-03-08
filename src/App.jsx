@@ -14,16 +14,19 @@ import Welcome from './components/Welcome'
 import { SkeletonDashboardPage, SkeletonBudgetProgress, SkeletonInvestmentPlanner } from './components/Skeleton'
 import { useDarkMode } from './hooks/useDarkMode'
 import { useAuth } from './contexts/AuthContext'
-import { getSnapshot, upsertSnapshot, listMonths, listAllSnapshots } from './services/snapshotService'
+import { getSnapshot, upsertSnapshot, listMonths, listAllSnapshots, getEffectiveIncome } from './services/snapshotService'
 import { listCategories } from './services/categoryService'
 import {
   getTransactionTotals,
+  getIncomeTotals,
+  getExpensesByStatus,
   upsertTransaction,
   deleteTransactionsBySource,
   listTransactions,
 } from './services/transactionService'
 import ForecastCard from './components/ForecastCard'
 import SmartAlerts from './components/SmartAlerts'
+import BalanceInput from './components/BalanceInput'
 import { forecastMonth } from './utils/forecast'
 import { useToast } from './contexts/ToastContext'
 
@@ -100,6 +103,11 @@ export default function App() {
   const [allSnapshots, setAllSnapshots] = useState([])
   const [investPlan, setInvestPlan] = useState(null)
   const [txCount, setTxCount] = useState(0)
+  const [incomeBreakdown, setIncomeBreakdown] = useState(null)
+  const [expenseStatus, setExpenseStatus] = useState(null)
+  const [realBalance, setRealBalance] = useState(null)
+  const [realBalanceUpdatedAt, setRealBalanceUpdatedAt] = useState(null)
+  const [currentSnapshot, setCurrentSnapshot] = useState(null)
 
   const totalsRef = useRef(totals)
   const statusTimer = useRef(null)
@@ -151,6 +159,16 @@ export default function App() {
       const txTotals = await getTransactionTotals(month)
       const txs = await listTransactions(month)
       setTxCount(txs.length)
+
+      // Load real balance and income breakdown from snapshot
+      setCurrentSnapshot(snap)
+      if (snap) {
+        setRealBalance(snap.real_balance != null ? Number(snap.real_balance) : null)
+        setRealBalanceUpdatedAt(snap.real_balance_updated_at || null)
+      } else {
+        setRealBalance(null)
+        setRealBalanceUpdatedAt(null)
+      }
 
       if (snap) {
         const t = {
@@ -218,6 +236,11 @@ export default function App() {
       setShowDash(false)
       setPrevTotals(null)
       setTxCount(0)
+      setIncomeBreakdown(null)
+      setExpenseStatus(null)
+      setRealBalance(null)
+      setRealBalanceUpdatedAt(null)
+      setCurrentSnapshot(null)
       showToast({ type: 'error', message: 'Erro ao carregar dados do mês.' })
     } finally {
       setMonthLoading(false)
@@ -238,6 +261,36 @@ export default function App() {
     } catch { /* non-critical */ }
   }, [])
 
+  const loadIncomeAndExpenseData = useCallback(async (month, cats) => {
+    try {
+      const categories = cats || userCategories || []
+      const [incomeTotals, expStatus] = await Promise.all([
+        getIncomeTotals(month, categories),
+        getExpensesByStatus(month),
+      ])
+      const hasBreakdown = incomeTotals.extraordinary > 0 || incomeTotals.reserve > 0
+      setIncomeBreakdown({
+        recurring: incomeTotals.recurring,
+        extraordinary: incomeTotals.extraordinary,
+        reserve: incomeTotals.reserve,
+        total: incomeTotals.recurring + incomeTotals.extraordinary + incomeTotals.reserve,
+        hasBreakdown,
+      })
+      setExpenseStatus(expStatus)
+
+      // Sync income breakdown to snapshot for historical reference
+      if (hasBreakdown) {
+        await upsertSnapshot({
+          month,
+          ...totalsRef.current,
+          recurring_income: incomeTotals.recurring,
+          extraordinary_income: incomeTotals.extraordinary,
+          reserve_usage: incomeTotals.reserve,
+        })
+      }
+    } catch { /* non-critical */ }
+  }, [userCategories])
+
   // ── Initial load ──
 
   useEffect(() => {
@@ -246,7 +299,8 @@ export default function App() {
     loadMonth(selectedMonth)
     loadCategories()
     loadSnapshots()
-  }, [user, selectedMonth, loadMonth, refreshMonths, loadCategories, loadSnapshots])
+    loadIncomeAndExpenseData(selectedMonth)
+  }, [user, selectedMonth, loadMonth, refreshMonths, loadCategories, loadSnapshots, loadIncomeAndExpenseData])
 
   // ── Handlers ──
 
@@ -265,6 +319,7 @@ export default function App() {
       const txs = await listTransactions(month)
       setTxCount(txs.length)
       loadSnapshots()
+      loadIncomeAndExpenseData(month)
       setSaveStatus('saved')
       clearTimeout(statusTimer.current)
       statusTimer.current = setTimeout(() => setSaveStatus(null), 2000)
@@ -272,7 +327,7 @@ export default function App() {
       showToast({ type: 'error', message: 'Erro ao processar importação.' })
       setSaveStatus('error')
     }
-  }, [loadSnapshots, showToast])
+  }, [loadSnapshots, loadIncomeAndExpenseData, showToast])
 
   const handleInputChange = (e) => {
     const { name, value } = e.target
@@ -326,6 +381,7 @@ export default function App() {
       const txs = await listTransactions(month)
       setTxCount(txs.length)
       loadSnapshots()
+      loadIncomeAndExpenseData(month)
 
       const deltaEntries = Object.entries(deltas)
       if (deltaEntries.length > 0) {
@@ -342,7 +398,7 @@ export default function App() {
       setSaveStatus('error')
       showToast({ type: 'error', message: 'Erro ao salvar ajustes.' })
     }
-  }, [loadSnapshots, showToast])
+  }, [loadSnapshots, loadIncomeAndExpenseData, showToast])
 
   const handleReset = async () => {
     setTotals({ ...EMPTY })
@@ -368,8 +424,9 @@ export default function App() {
       const txs = await listTransactions(selectedMonthRef.current)
       setTxCount(txs.length)
       loadSnapshots()
+      loadIncomeAndExpenseData(selectedMonthRef.current)
     } catch { /* toast handled by TransactionList */ }
-  }, [loadSnapshots])
+  }, [loadSnapshots, loadIncomeAndExpenseData])
 
   const forecast = useMemo(() => {
     if (selectedMonth !== currentMonth) return null
@@ -380,8 +437,23 @@ export default function App() {
       dayOfMonth: getDate(now),
       daysInMonth: getDaysInMonth(now),
       historicalSnapshots: allSnapshots.filter(s => s.month !== currentMonth).slice(-6),
+      recurringIncome: incomeBreakdown?.hasBreakdown ? incomeBreakdown.recurring : undefined,
+      extraordinaryIncome: incomeBreakdown?.extraordinary,
+      reserveUsage: incomeBreakdown?.reserve,
     })
-  }, [totals, selectedMonth, currentMonth, allSnapshots])
+  }, [totals, selectedMonth, currentMonth, allSnapshots, incomeBreakdown])
+
+  const handleSaveRealBalance = useCallback(async (value) => {
+    const month = selectedMonthRef.current
+    try {
+      await upsertSnapshot({ month, ...totalsRef.current, real_balance: value })
+      setRealBalance(value)
+      setRealBalanceUpdatedAt(value != null ? new Date().toISOString() : null)
+      showToast({ type: 'success', message: value != null ? 'Saldo real atualizado.' : 'Saldo real removido.' })
+    } catch {
+      showToast({ type: 'error', message: 'Erro ao salvar saldo real.' })
+    }
+  }, [showToast])
 
   const hasValues = Object.values(totals).some((v) => v > 0)
 
@@ -540,6 +612,15 @@ export default function App() {
               </div>
             </div>
 
+            {/* Saldo real da conta */}
+            {showDash && (
+              <BalanceInput
+                value={realBalance}
+                updatedAt={realBalanceUpdatedAt}
+                onSave={handleSaveRealBalance}
+              />
+            )}
+
             {/* Dashboard */}
             {showDash && (
               <Dashboard
@@ -552,6 +633,10 @@ export default function App() {
                 dark={dark}
                 categories={userCategories}
                 transactionTotals={txDetailTotals}
+                incomeBreakdown={incomeBreakdown}
+                expenseStatus={expenseStatus}
+                realBalance={realBalance}
+                realBalanceUpdatedAt={realBalanceUpdatedAt}
               />
             )}
 
@@ -563,6 +648,8 @@ export default function App() {
                 currentMonth={currentMonth}
                 historicalSnapshots={allSnapshots}
                 prevTotals={prevTotals}
+                incomeBreakdown={incomeBreakdown}
+                realBalance={realBalance}
               />
             )}
 

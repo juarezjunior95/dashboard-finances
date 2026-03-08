@@ -24,11 +24,14 @@ async function getUser() {
 }
 
 export const DEFAULT_CATEGORIES = [
-  { key: 'receita', label: 'Receitas', color: 'emerald', parent_category: 'receita', icon: '💰', is_default: true, sort_order: 0 },
-  { key: 'fixas', label: 'Contas Fixas', color: 'rose', parent_category: 'fixas', icon: '🏠', is_default: true, sort_order: 1 },
-  { key: 'cartao', label: 'Cartão', color: 'orange', parent_category: 'cartao', icon: '💳', is_default: true, sort_order: 2 },
-  { key: 'compras', label: 'Compras/Gastos Diários', color: 'amber', parent_category: 'cartao', icon: '🛒', is_default: true, sort_order: 3 },
-  { key: 'invest', label: 'Investimentos', color: 'indigo', parent_category: 'invest', icon: '📈', is_default: true, sort_order: 4 },
+  { key: 'receita', label: 'Receitas', color: 'emerald', parent_category: 'receita', icon: '💰', is_default: true, sort_order: 0, income_type: 'recurring' },
+  { key: 'salario', label: 'Salário', color: 'emerald', parent_category: 'receita', icon: '💵', is_default: true, sort_order: 1, income_type: 'recurring' },
+  { key: 'extraordinario', label: 'Entrada Extraordinária', color: 'cyan', parent_category: 'receita', icon: '⭐', is_default: true, sort_order: 2, income_type: 'extraordinary' },
+  { key: 'reserva_uso', label: 'Uso da Reserva', color: 'violet', parent_category: 'receita', icon: '🏦', is_default: true, sort_order: 3, income_type: 'reserve' },
+  { key: 'fixas', label: 'Contas Fixas', color: 'rose', parent_category: 'fixas', icon: '🏠', is_default: true, sort_order: 4 },
+  { key: 'cartao', label: 'Cartão', color: 'orange', parent_category: 'cartao', icon: '💳', is_default: true, sort_order: 5 },
+  { key: 'compras', label: 'Compras/Gastos Diários', color: 'amber', parent_category: 'cartao', icon: '🛒', is_default: true, sort_order: 6 },
+  { key: 'invest', label: 'Investimentos', color: 'indigo', parent_category: 'invest', icon: '📈', is_default: true, sort_order: 7 },
 ]
 
 export const AVAILABLE_COLORS = [
@@ -68,6 +71,7 @@ async function seedDefaults(user) {
     icon: c.icon,
     is_default: true,
     sort_order: c.sort_order,
+    income_type: c.income_type || null,
   }))
 
   try {
@@ -100,7 +104,7 @@ async function ensureBuiltinCategories(existingCats, user) {
       try {
         const { data, error } = await supabase
           .from('user_categories')
-          .insert({ user_id: user.id, key: cat.key, label: cat.label, color: cat.color, parent_category: cat.parent_category, icon: cat.icon, is_default: true, sort_order: cat.sort_order })
+          .insert({ user_id: user.id, key: cat.key, label: cat.label, color: cat.color, parent_category: cat.parent_category, icon: cat.icon, is_default: true, sort_order: cat.sort_order, income_type: cat.income_type || null })
           .select()
           .single()
         if (!error && data) added.push(data)
@@ -264,7 +268,7 @@ export async function deleteCategory(id) {
 export function getCategoryMap(categories) {
   const map = new Map()
   for (const c of categories) {
-    map.set(c.key, { label: c.label, color: c.color, parent_category: c.parent_category, icon: c.icon, is_default: c.is_default })
+    map.set(c.key, { label: c.label, color: c.color, parent_category: c.parent_category, icon: c.icon, is_default: c.is_default, income_type: c.income_type || null })
   }
   return map
 }

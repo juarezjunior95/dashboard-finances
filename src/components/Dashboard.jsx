@@ -205,11 +205,23 @@ function KpiCard({ label, value, percent, color, dark, prevValue, invertColor, b
 
 // ── Dashboard ────────────────────────────────────────────
 
-export default function Dashboard({ receita, fixas, cartao, invest, prevTotals, budgetAlerts = {}, dark, categories, transactionTotals }) {
-  const total = receita || 1
-  const saldoReal = receita - fixas - cartao - invest
-  const saldoGrafico = Math.max(saldoReal, 0)
-  const gastosExcedidos = saldoReal < 0
+export default function Dashboard({
+  receita, fixas, cartao, invest, prevTotals, budgetAlerts = {}, dark, categories, transactionTotals,
+  incomeBreakdown, expenseStatus, realBalance, realBalanceUpdatedAt,
+}) {
+  const hasIncomeBreakdown = incomeBreakdown?.hasBreakdown === true
+  const recurringIncome = hasIncomeBreakdown ? incomeBreakdown.recurring : receita
+  const extraordinaryIncome = hasIncomeBreakdown ? incomeBreakdown.extraordinary : 0
+  const reserveUsage = hasIncomeBreakdown ? incomeBreakdown.reserve : 0
+
+  const total = recurringIncome || receita || 1
+  const saldoCalculado = receita - fixas - cartao - invest
+  const hasRealBalance = realBalance != null && realBalance > 0
+  const saldoExibido = hasRealBalance ? realBalance : saldoCalculado
+  const saldoGrafico = Math.max(saldoCalculado, 0)
+  const gastosExcedidos = saldoCalculado < 0
+
+  const hasExpenseStatus = expenseStatus && (expenseStatus.paid > 0 || expenseStatus.pending > 0)
 
   const pct = useMemo(
     () => ({
@@ -223,8 +235,8 @@ export default function Dashboard({ receita, fixas, cartao, invest, prevTotals, 
   )
 
   const analysis = useMemo(
-    () => analyzeFinances({ receita, fixas, cartao, invest }),
-    [receita, fixas, cartao, invest],
+    () => analyzeFinances({ receita, fixas, cartao, invest, recurringIncome: hasIncomeBreakdown ? recurringIncome : undefined }),
+    [receita, fixas, cartao, invest, recurringIncome, hasIncomeBreakdown],
   )
 
   const ruleMap = useMemo(() => {
@@ -398,10 +410,78 @@ export default function Dashboard({ receita, fixas, cartao, invest, prevTotals, 
 
   return (
     <section className="w-full max-w-5xl mx-auto space-y-4 sm:space-y-8">
-      {/* KPIs: 1col mobile → 2col tablet → 4col desktop */}
+      {/* Row 1: Saldo Real / Saldo Calculado (destaque) */}
+      <div
+        className={`rounded-2xl px-4 sm:px-6 py-4 sm:py-5 border ${
+          saldoExibido >= 0
+            ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950 dark:border-emerald-800'
+            : 'bg-red-50 border-red-200 dark:bg-red-950 dark:border-red-800'
+        }`}
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
+              {hasRealBalance ? 'Saldo Real' : 'Saldo Calculado'}
+              {!hasRealBalance && (
+                <span className="ml-1.5 inline-flex px-1.5 py-0.5 rounded text-[9px] font-medium bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                  calculado
+                </span>
+              )}
+            </p>
+            <p className={`text-xl sm:text-2xl font-bold ${
+              saldoExibido >= 0
+                ? 'text-emerald-700 dark:text-emerald-400'
+                : 'text-red-700 dark:text-red-400'
+            }`}>
+              {formatBRL(saldoExibido)}
+            </p>
+          </div>
+          {hasRealBalance && saldoCalculado !== realBalance && (
+            <div className="text-right">
+              <p className="text-[10px] text-gray-400 dark:text-gray-500">Saldo calculado</p>
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{formatBRL(saldoCalculado)}</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Row 2: Income breakdown (if available) */}
+      {hasIncomeBreakdown && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+          <div className="rounded-2xl border p-3 sm:p-4" style={{ backgroundColor: COLORS.receita.light, borderColor: `${COLORS.receita.bg}30` }}>
+            <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wide opacity-60 text-gray-700 dark:text-gray-300">
+              Receita Recorrente
+            </p>
+            <p className="text-base sm:text-lg font-bold" style={{ color: COLORS.receita.bg }}>{formatBRL(recurringIncome)}</p>
+            <p className="text-[10px] text-gray-500 dark:text-gray-400">Salário / Renda fixa</p>
+          </div>
+          {extraordinaryIncome > 0 && (
+            <div className="rounded-2xl border p-3 sm:p-4 bg-cyan-50 dark:bg-cyan-950 border-cyan-200 dark:border-cyan-800">
+              <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wide opacity-60 text-gray-700 dark:text-gray-300">
+                Entradas Extra
+              </p>
+              <p className="text-base sm:text-lg font-bold text-cyan-600 dark:text-cyan-400">{formatBRL(extraordinaryIncome)}</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400">FGTS, rescisão, devoluções</p>
+            </div>
+          )}
+          {reserveUsage > 0 && (
+            <div className="rounded-2xl border p-3 sm:p-4 bg-violet-50 dark:bg-violet-950 border-violet-200 dark:border-violet-800">
+              <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wide opacity-60 text-gray-700 dark:text-gray-300">
+                Uso da Reserva
+              </p>
+              <p className="text-base sm:text-lg font-bold text-violet-600 dark:text-violet-400">{formatBRL(reserveUsage)}</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400">Transferido da reserva</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Row 3: KPIs (Receita total if no breakdown, + Despesas) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <KpiCard label={LABELS.receita} value={receita} percent={pct.receita} color={COLORS.receita} dark={dark}
-          prevValue={prevTotals?.receita} invertColor={false} />
+        {!hasIncomeBreakdown && (
+          <KpiCard label={LABELS.receita} value={receita} percent={pct.receita} color={COLORS.receita} dark={dark}
+            prevValue={prevTotals?.receita} invertColor={false} />
+        )}
         <KpiCard label={LABELS.fixas} value={fixas} percent={pct.fixas} color={COLORS.fixas} dark={dark}
           prevValue={prevTotals?.fixas} invertColor={true} budgetAlert={budgetAlerts.fixas} rule={ruleMap.fixas} />
         <KpiCard label={LABELS.cartao} value={cartao} percent={pct.cartao} color={COLORS.cartao} dark={dark}
@@ -410,19 +490,26 @@ export default function Dashboard({ receita, fixas, cartao, invest, prevTotals, 
           prevValue={prevTotals?.invest} invertColor={false} budgetAlert={budgetAlerts.invest} rule={ruleMap.invest} />
       </div>
 
+      {/* Row 4: Payment status (only if any transaction has payment_status) */}
+      {hasExpenseStatus && (
+        <div className="grid grid-cols-3 gap-3 sm:gap-4">
+          <div className="rounded-2xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950 p-3 sm:p-4">
+            <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">Já Pago</p>
+            <p className="text-sm sm:text-lg font-bold text-emerald-700 dark:text-emerald-400">{formatBRL(expenseStatus.paid)}</p>
+          </div>
+          <div className="rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 p-3 sm:p-4">
+            <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">Pendente</p>
+            <p className="text-sm sm:text-lg font-bold text-amber-700 dark:text-amber-400">{formatBRL(expenseStatus.pending)}</p>
+          </div>
+          <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3 sm:p-4">
+            <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Sem Status</p>
+            <p className="text-sm sm:text-lg font-bold text-gray-600 dark:text-gray-300">{formatBRL(expenseStatus.unknown)}</p>
+          </div>
+        </div>
+      )}
+
       {/* Insights financeiros */}
       <FinancialInsights analysis={analysis} />
-
-      {/* Saldo */}
-      <div
-        className={`rounded-2xl px-4 sm:px-6 py-3 sm:py-4 text-center font-bold text-base sm:text-lg ${
-          saldoReal >= 0
-            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-800'
-            : 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-800'
-        }`}
-      >
-        Saldo: {formatBRL(saldoReal)}
-      </div>
 
       {/* Alerta gastos excedidos */}
       {gastosExcedidos && (
@@ -431,7 +518,7 @@ export default function Dashboard({ receita, fixas, cartao, invest, prevTotals, 
           <div>
             <p className="text-xs sm:text-sm font-bold text-amber-800 dark:text-amber-300">Gastos acima da receita</p>
             <p className="text-[11px] sm:text-xs text-amber-700 dark:text-amber-400">
-              Seus gastos ultrapassam a receita em {formatBRL(Math.abs(saldoReal))}. O saldo aparece como zero no gráfico.
+              Seus gastos ultrapassam a receita em {formatBRL(Math.abs(saldoCalculado))}. O saldo aparece como zero no gráfico.
             </p>
           </div>
         </div>
