@@ -300,7 +300,8 @@ export default function App() {
     loadCategories()
     loadSnapshots()
     loadIncomeAndExpenseData(selectedMonth)
-  }, [user, selectedMonth, loadMonth, refreshMonths, loadCategories, loadSnapshots, loadIncomeAndExpenseData])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, selectedMonth])
 
   // ── Handlers ──
 

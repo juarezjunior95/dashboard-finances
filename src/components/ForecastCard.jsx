@@ -121,7 +121,8 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
       }
     }
     return avg
-  }, [historicalSnapshots, currentMonth])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historicalSnapshots.length, currentMonth])
 
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-6 space-y-4">
