@@ -20,6 +20,7 @@ import {
   getTransactionTotals,
   getIncomeTotals,
   getExpensesByStatus,
+  getPendingIncome,
   upsertTransaction,
   deleteTransactionsBySource,
   listTransactions,
@@ -28,6 +29,7 @@ import ForecastCard from './components/ForecastCard'
 import SmartAlerts from './components/SmartAlerts'
 import BalanceInput from './components/BalanceInput'
 import { forecastMonth } from './utils/forecast'
+import { calculateReserveForecast } from './utils/reserveForecast'
 import { useToast } from './contexts/ToastContext'
 
 const LEGACY_KEY = 'dashboard-financas-totals'
@@ -108,6 +110,8 @@ export default function App() {
   const [realBalance, setRealBalance] = useState(null)
   const [realBalanceUpdatedAt, setRealBalanceUpdatedAt] = useState(null)
   const [currentSnapshot, setCurrentSnapshot] = useState(null)
+  const [reserveTotal, setReserveTotal] = useState(null)
+  const [pendingIncome, setPendingIncome] = useState(0)
 
   const totalsRef = useRef(totals)
   const statusTimer = useRef(null)
@@ -165,9 +169,11 @@ export default function App() {
       if (snap) {
         setRealBalance(snap.real_balance != null ? Number(snap.real_balance) : null)
         setRealBalanceUpdatedAt(snap.real_balance_updated_at || null)
+        setReserveTotal(snap.reserve_total != null ? Number(snap.reserve_total) : null)
       } else {
         setRealBalance(null)
         setRealBalanceUpdatedAt(null)
+        setReserveTotal(null)
       }
 
       if (snap) {
@@ -241,6 +247,8 @@ export default function App() {
       setRealBalance(null)
       setRealBalanceUpdatedAt(null)
       setCurrentSnapshot(null)
+      setReserveTotal(null)
+      setPendingIncome(0)
       showToast({ type: 'error', message: 'Erro ao carregar dados do mês.' })
     } finally {
       setMonthLoading(false)
@@ -264,10 +272,12 @@ export default function App() {
   const loadIncomeAndExpenseData = useCallback(async (month, cats) => {
     try {
       const categories = cats || userCategories || []
-      const [incomeTotals, expStatus] = await Promise.all([
+      const [incomeTotals, expStatus, pendingInc] = await Promise.all([
         getIncomeTotals(month, categories),
         getExpensesByStatus(month),
+        getPendingIncome(month),
       ])
+      setPendingIncome(pendingInc)
       const hasBreakdown = incomeTotals.extraordinary > 0 || incomeTotals.reserve > 0
       setIncomeBreakdown({
         recurring: incomeTotals.recurring,
@@ -444,6 +454,35 @@ export default function App() {
     })
   }, [totals, selectedMonth, currentMonth, allSnapshots, incomeBreakdown])
 
+  const reserveForecast = useMemo(() => {
+    if (reserveTotal == null || reserveTotal <= 0) return null
+    if (!forecast) return null
+
+    const effectiveBalance = realBalance != null ? realBalance : forecast.currentSaldo
+    const recurringInc = incomeBreakdown?.hasBreakdown ? incomeBreakdown.recurring : (totals.receita || 0)
+
+    return calculateReserveForecast({
+      recurringIncome: recurringInc,
+      totalExpensesProjected: forecast.totalExpensesProjected,
+      currentAccountBalance: effectiveBalance,
+      pendingExpenses: expenseStatus?.pending || 0,
+      reserveTotal,
+      pendingIncome,
+      currentExpenses: forecast.currentExpenses,
+    })
+  }, [reserveTotal, forecast, realBalance, incomeBreakdown, totals.receita, expenseStatus, pendingIncome])
+
+  const handleSaveReserveTotal = useCallback(async (value) => {
+    const month = selectedMonthRef.current
+    try {
+      await upsertSnapshot({ month, ...totalsRef.current, reserve_total: value })
+      setReserveTotal(value)
+      showToast({ type: 'success', message: value != null ? 'Saldo da reserva atualizado.' : 'Saldo da reserva removido.' })
+    } catch {
+      showToast({ type: 'error', message: 'Erro ao salvar saldo da reserva.' })
+    }
+  }, [showToast])
+
   const handleSaveRealBalance = useCallback(async (value) => {
     const month = selectedMonthRef.current
     try {
@@ -619,6 +658,8 @@ export default function App() {
                 value={realBalance}
                 updatedAt={realBalanceUpdatedAt}
                 onSave={handleSaveRealBalance}
+                reserveTotal={reserveTotal}
+                onSaveReserve={handleSaveReserveTotal}
               />
             )}
 
@@ -651,6 +692,7 @@ export default function App() {
                 prevTotals={prevTotals}
                 incomeBreakdown={incomeBreakdown}
                 realBalance={realBalance}
+                reserveForecast={reserveForecast}
               />
             )}
 

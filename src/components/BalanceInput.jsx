@@ -12,7 +12,7 @@ function formatUpdatedAt(isoStr) {
   }
 }
 
-export default function BalanceInput({ value, updatedAt, onSave }) {
+function InlineBalanceField({ icon, label, hint, value, updatedAt, onSave, onClear, accentColor = 'indigo' }) {
   const [editing, setEditing] = useState(false)
   const [inputValue, setInputValue] = useState('')
   const inputRef = useRef(null)
@@ -33,8 +33,8 @@ export default function BalanceInput({ value, updatedAt, onSave }) {
     setEditing(false)
   }
 
-  const handleClear = () => {
-    onSave(null)
+  const handleClearClick = () => {
+    onClear()
     setInputValue('')
     setEditing(false)
   }
@@ -42,18 +42,36 @@ export default function BalanceInput({ value, updatedAt, onSave }) {
   const hasValue = value != null && value > 0
   const dateLabel = formatUpdatedAt(updatedAt)
 
+  const colorMap = {
+    indigo: {
+      border: 'border-indigo-300 dark:border-indigo-700',
+      ring: 'focus:ring-indigo-400',
+      btn: 'bg-indigo-600 hover:bg-indigo-700',
+      text: 'text-indigo-600 dark:text-indigo-400',
+      hoverText: 'group-hover:text-indigo-500 dark:group-hover:text-indigo-400',
+      hoverIcon: 'group-hover:text-indigo-400',
+    },
+    violet: {
+      border: 'border-violet-300 dark:border-violet-700',
+      ring: 'focus:ring-violet-400',
+      btn: 'bg-violet-600 hover:bg-violet-700',
+      text: 'text-violet-600 dark:text-violet-400',
+      hoverText: 'group-hover:text-violet-500 dark:group-hover:text-violet-400',
+      hoverIcon: 'group-hover:text-violet-400',
+    },
+  }
+  const c = colorMap[accentColor] || colorMap.indigo
+
   return (
-    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-5">
-      <div className="flex items-center justify-between mb-2">
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-2">
-          <span className="text-base">🏦</span>
-          <h3 className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-400">
-            Saldo atual da conta
-          </h3>
+          <span className="text-sm">{icon}</span>
+          <h3 className="text-xs font-semibold text-gray-600 dark:text-gray-400">{label}</h3>
         </div>
         {hasValue && !editing && (
           <button
-            onClick={handleClear}
+            onClick={handleClearClick}
             className="text-[10px] text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors cursor-pointer"
           >
             Limpar
@@ -75,13 +93,13 @@ export default function BalanceInput({ value, updatedAt, onSave }) {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') setEditing(false) }}
-              className="w-full pl-9 pr-3 py-2 rounded-xl border border-indigo-300 dark:border-indigo-700 text-sm font-medium bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-shadow"
+              className={`w-full pl-9 pr-3 py-2 rounded-xl border ${c.border} text-sm font-medium bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 ${c.ring} transition-shadow`}
               placeholder="0,00"
             />
           </div>
           <button
             onClick={handleSave}
-            className="px-3 py-2 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors cursor-pointer shrink-0"
+            className={`px-3 py-2 text-xs font-medium text-white ${c.btn} rounded-xl transition-colors cursor-pointer shrink-0`}
           >
             Salvar
           </button>
@@ -99,7 +117,7 @@ export default function BalanceInput({ value, updatedAt, onSave }) {
         >
           {hasValue ? (
             <div>
-              <p className="text-lg sm:text-xl font-bold text-indigo-600 dark:text-indigo-400 group-hover:text-indigo-700 dark:group-hover:text-indigo-300 transition-colors">
+              <p className={`text-lg font-bold ${c.text} transition-colors`}>
                 {BRL(value)}
               </p>
               {dateLabel && (
@@ -110,10 +128,10 @@ export default function BalanceInput({ value, updatedAt, onSave }) {
             </div>
           ) : (
             <div className="flex items-center gap-2 py-1">
-              <span className="text-sm text-gray-400 dark:text-gray-500 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors">
-                Clique para informar o saldo real da conta
+              <span className={`text-sm text-gray-400 dark:text-gray-500 ${c.hoverText} transition-colors`}>
+                {hint}
               </span>
-              <svg className="w-4 h-4 text-gray-300 dark:text-gray-600 group-hover:text-indigo-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className={`w-4 h-4 text-gray-300 dark:text-gray-600 ${c.hoverIcon} transition-colors`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
             </div>
@@ -122,10 +140,39 @@ export default function BalanceInput({ value, updatedAt, onSave }) {
       )}
 
       {!hasValue && !editing && (
-        <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">
-          Sem saldo informado — usando saldo calculado como referência.
+        <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
+          {value == null ? `Sem valor informado.` : ''}
         </p>
       )}
+    </div>
+  )
+}
+
+export default function BalanceInput({ value, updatedAt, onSave, reserveTotal, onSaveReserve }) {
+  return (
+    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+        <InlineBalanceField
+          icon="🏦"
+          label="Saldo atual da conta"
+          hint="Clique para informar o saldo real"
+          value={value}
+          updatedAt={updatedAt}
+          onSave={(v) => onSave(v)}
+          onClear={() => onSave(null)}
+          accentColor="indigo"
+        />
+        <InlineBalanceField
+          icon="🛡️"
+          label="Fundo de reserva"
+          hint="Clique para informar saldo da reserva"
+          value={reserveTotal}
+          updatedAt={null}
+          onSave={(v) => onSaveReserve(v)}
+          onClear={() => onSaveReserve(null)}
+          accentColor="violet"
+        />
+      </div>
     </div>
   )
 }

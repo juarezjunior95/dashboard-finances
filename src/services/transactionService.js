@@ -312,6 +312,34 @@ export async function getIncomeTotals(month, categories) {
 }
 
 // Despesas separadas por payment_status (paid, pending, unknown)
+/**
+ * Receita pendente de recebimento (payment_status = 'pending' em categorias de receita).
+ * Usado no cálculo de transferência imediata da reserva.
+ */
+export async function getPendingIncome(month) {
+  const txs = await listTransactions(month)
+  const incomeCategories = ['receita', 'salario', 'extraordinario', 'reserva_uso']
+
+  let parentMap = {}
+  try {
+    const catsRaw = localStorage.getItem('user_categories')
+    if (catsRaw) {
+      const cats = JSON.parse(catsRaw)
+      for (const c of cats) parentMap[c.key] = c.parent_category || c.key
+    }
+  } catch { /* ignore */ }
+
+  let total = 0
+  for (const tx of txs) {
+    if (tx.payment_status !== 'pending') continue
+    const parent = parentMap[tx.category] || tx.category
+    if (incomeCategories.includes(tx.category) || parent === 'receita') {
+      total += Number(tx.amount) || 0
+    }
+  }
+  return total
+}
+
 export async function getExpensesByStatus(month) {
   const txs = await listTransactions(month)
   const result = { paid: 0, pending: 0, unknown: 0 }

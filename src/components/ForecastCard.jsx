@@ -73,7 +73,15 @@ const STATUS_BADGE = {
   neutral: { label: 'Acompanhe', cls: 'text-gray-500 dark:text-gray-400' },
 }
 
-export default function ForecastCard({ totals, selectedMonth, currentMonth, historicalSnapshots = [], prevTotals = null, incomeBreakdown = null, realBalance = null }) {
+const HEALTH_META = {
+  excellent: { label: 'Excelente', cls: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500', icon: '🛡️' },
+  good:      { label: 'Boa', cls: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-500', icon: '✓' },
+  warning:   { label: 'Atenção', cls: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500', icon: '⚠️' },
+  critical:  { label: 'Crítica', cls: 'text-red-600 dark:text-red-400', bg: 'bg-red-500', icon: '🚨' },
+  none:      { label: '—', cls: 'text-gray-400', bg: 'bg-gray-300', icon: '' },
+}
+
+export default function ForecastCard({ totals, selectedMonth, currentMonth, historicalSnapshots = [], prevTotals = null, incomeBreakdown = null, realBalance = null, reserveForecast = null }) {
   const [detailsOpen, setDetailsOpen] = useState(false)
 
   const isCurrentMonth = selectedMonth === currentMonth
@@ -273,12 +281,10 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
                 const isLumpSum = proj.method.startsWith('lump_') || proj.method.startsWith('receita')
                 const isLinear = proj.method.startsWith('linear_')
                 
-                // Referência para barra de progresso
                 const reference = prevValue || avgHistValue || 1
 
                 return (
                   <div key={key} className="space-y-2 pb-3 border-b border-gray-100 dark:border-gray-800 last:border-0 last:pb-0">
-                    {/* Header: Label + Status */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className={`w-2.5 h-2.5 rounded-full ${meta.bg}`} />
@@ -289,7 +295,6 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
                       </span>
                     </div>
 
-                    {/* Layout para lump_sum (fixas, invest) */}
                     {isLumpSum && (
                       <>
                         <div className="grid grid-cols-3 gap-2 text-[10px]">
@@ -311,7 +316,6 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
                           )}
                         </div>
 
-                        {/* Barra: atual vs média */}
                         {(avgHistValue || prevValue) && (
                           <div className="relative h-2 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
                             <div
@@ -321,7 +325,6 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
                           </div>
                         )}
 
-                        {/* Comparação com mês anterior */}
                         {prevValue !== null && prevValue > 0 && (
                           <p className="text-[10px] text-gray-500 dark:text-gray-400">
                             {proj.current > prevValue 
@@ -333,7 +336,6 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
                       </>
                     )}
 
-                    {/* Layout para linear (cartão) */}
                     {isLinear && (
                       <>
                         <div className="grid grid-cols-3 gap-2 text-[10px]">
@@ -353,7 +355,6 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
                           </div>
                         </div>
 
-                        {/* Barra: atual vs mês anterior */}
                         {prevValue && (
                           <div className="relative h-2 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
                             <div
@@ -363,14 +364,12 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
                           </div>
                         )}
 
-                        {/* Comparação e avisos */}
                         {prevValue !== null && (
                           <p className="text-[10px] text-gray-500 dark:text-gray-400">
                             {Math.round((proj.current / prevValue) * 100)}% do mês anterior ({BRL(prevValue)})
                           </p>
                         )}
 
-                        {/* Aviso contextual baseado no dia */}
                         {dayOfMonth < 10 && (
                           <p className="text-[10px] text-gray-500 dark:text-gray-400 italic">
                             Poucos dias — projeção incerta, acompanhe nos próximos dias
@@ -390,6 +389,107 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
           )}
         </>
       )}
+
+      {/* Reserve forecast section */}
+      {reserveForecast && reserveForecast.reserveTotal > 0 && (
+        <ReserveSection forecast={reserveForecast} />
+      )}
+    </div>
+  )
+}
+
+function ReserveSection({ forecast }) {
+  const health = HEALTH_META[forecast.reserveHealth] || HEALTH_META.none
+
+  return (
+    <div className="border-t border-gray-200 dark:border-gray-800 pt-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-sm">🛡️</span>
+          <h3 className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-400">Fundo de Reserva</h3>
+        </div>
+        <span className={`text-[10px] sm:text-xs font-semibold ${health.cls}`}>
+          {health.icon} {health.label}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50/50 dark:bg-violet-950/50 p-3">
+          <p className="text-[10px] font-semibold text-violet-500 dark:text-violet-400 uppercase">Saldo Reserva</p>
+          <p className="text-sm font-bold text-violet-600 dark:text-violet-400">{BRL(forecast.reserveTotal)}</p>
+          <p className="text-[10px] text-gray-400 dark:text-gray-500">
+            {forecast.monthsOfRunway > 0 ? `${forecast.monthsOfRunway} mes${forecast.monthsOfRunway !== 1 ? 'es' : ''} de cobertura` : '—'}
+          </p>
+        </div>
+
+        <div className={`rounded-xl border p-3 ${
+          forecast.needsReserve
+            ? 'border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/50'
+            : 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/50'
+        }`}>
+          <p className={`text-[10px] font-semibold uppercase ${
+            forecast.needsReserve ? 'text-amber-500 dark:text-amber-400' : 'text-emerald-500 dark:text-emerald-400'
+          }`}>Uso Projetado</p>
+          <p className={`text-sm font-bold ${
+            forecast.needsReserve ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'
+          }`}>
+            {forecast.needsReserve ? BRL(forecast.reserveUsageForecast) : 'Nenhum'}
+          </p>
+          <p className="text-[10px] text-gray-400 dark:text-gray-500">
+            {forecast.needsReserve ? 'Gastos > Receita' : 'Receita cobre gastos'}
+          </p>
+        </div>
+
+        <div className={`rounded-xl border p-3 ${
+          forecast.needsImmediateTransfer
+            ? 'border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/50'
+            : 'border-gray-200 dark:border-gray-800'
+        }`}>
+          <p className={`text-[10px] font-semibold uppercase ${
+            forecast.needsImmediateTransfer ? 'text-red-500 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'
+          }`}>Transferir Agora</p>
+          <p className={`text-sm font-bold ${
+            forecast.needsImmediateTransfer ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'
+          }`}>
+            {forecast.needsImmediateTransfer ? BRL(forecast.immediateTransferNeeded) : '—'}
+          </p>
+          <p className="text-[10px] text-gray-400 dark:text-gray-500">
+            {forecast.needsImmediateTransfer ? 'Para cobrir pendentes' : 'Sem necessidade'}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3">
+          <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase">Reserva Após Uso</p>
+          <p className="text-sm font-bold text-gray-700 dark:text-gray-300">{BRL(forecast.reserveAfterUsage)}</p>
+          <p className="text-[10px] text-gray-400 dark:text-gray-500">Saldo projetado</p>
+        </div>
+      </div>
+
+      {/* Runway bar */}
+      {forecast.reserveTotal > 0 && (
+        <div className="space-y-1">
+          <div className="relative h-2 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+            <div
+              className={`absolute inset-y-0 left-0 rounded-full transition-all duration-500 ${health.bg}`}
+              style={{ width: `${Math.min((forecast.monthsOfRunway / 6) * 100, 100)}%` }}
+            />
+            <div
+              className="absolute inset-y-0 w-0.5 bg-gray-500 dark:bg-gray-300"
+              style={{ left: `${(3 / 6) * 100}%` }}
+              title="Ideal: 3 meses"
+            />
+          </div>
+          <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-gray-500">
+            <span>0 meses</span>
+            <span>Ideal: 3 meses</span>
+            <span>6+ meses</span>
+          </div>
+        </div>
+      )}
+
+      <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 italic">
+        {forecast.message}
+      </p>
     </div>
   )
 }
