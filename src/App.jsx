@@ -461,16 +461,20 @@ export default function App() {
     const effectiveBalance = realBalance != null ? realBalance : forecast.currentSaldo
     const recurringInc = incomeBreakdown?.hasBreakdown ? incomeBreakdown.recurring : (totals.receita || 0)
 
+    // Despesas essenciais = fixas + cartão (sem investimentos — investimentos seriam cortados antes de usar reserva)
+    const essentialProjected = (forecast.projections?.fixas?.projected || 0) + (forecast.projections?.cartao?.projected || 0)
+    const currentEssential = (totals.fixas || 0) + (totals.cartao || 0)
+
     return calculateReserveForecast({
       recurringIncome: recurringInc,
-      totalExpensesProjected: forecast.totalExpensesProjected,
+      essentialExpensesProjected: essentialProjected,
       currentAccountBalance: effectiveBalance,
       pendingExpenses: expenseStatus?.pending || 0,
       reserveTotal,
       pendingIncome,
-      currentExpenses: forecast.currentExpenses,
+      currentEssentialExpenses: currentEssential,
     })
-  }, [reserveTotal, forecast, realBalance, incomeBreakdown, totals.receita, expenseStatus, pendingIncome])
+  }, [reserveTotal, forecast, realBalance, incomeBreakdown, totals, expenseStatus, pendingIncome])
 
   const handleSaveReserveTotal = useCallback(async (value) => {
     const month = selectedMonthRef.current

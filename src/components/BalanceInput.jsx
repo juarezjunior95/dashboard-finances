@@ -26,8 +26,15 @@ function InlineBalanceField({ icon, label, hint, value, updatedAt, onSave, onCle
   }, [editing])
 
   const handleSave = () => {
-    const num = parseFloat(inputValue)
-    if (!isNaN(num) && num >= 0) {
+    const trimmed = inputValue.trim()
+    if (trimmed === '' || trimmed === '0') {
+      onClear()
+      setInputValue('')
+      setEditing(false)
+      return
+    }
+    const num = parseFloat(trimmed)
+    if (!isNaN(num) && num > 0) {
       onSave(num)
     }
     setEditing(false)
