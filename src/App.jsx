@@ -460,12 +460,13 @@ export default function App() {
 
     const effectiveBalance = realBalance != null ? realBalance : forecast.currentSaldo
     const recurringInc = incomeBreakdown?.hasBreakdown ? incomeBreakdown.recurring : (totals.receita || 0)
+    const totalIncome = totals.receita || 0
 
-    // Despesas essenciais = fixas + cartão (sem investimentos — investimentos seriam cortados antes de usar reserva)
     const essentialProjected = (forecast.projections?.fixas?.projected || 0) + (forecast.projections?.cartao?.projected || 0)
     const currentEssential = (totals.fixas || 0) + (totals.cartao || 0)
 
     return calculateReserveForecast({
+      totalIncomeThisMonth: totalIncome,
       recurringIncome: recurringInc,
       essentialExpensesProjected: essentialProjected,
       currentAccountBalance: effectiveBalance,
