@@ -692,7 +692,11 @@ export default function App() {
             )}
 
             {/* Indicadores Econômicos */}
-            <EconomicIndicators data={indicators} />
+            <EconomicIndicators 
+              data={indicators} 
+              investAmount={totals.invest || 0}
+              reserveAmount={reserveTotal || 0}
+            />
 
             {/* Bloco 3: Visão Orçamentária */}
             {showDash && (
