@@ -30,8 +30,10 @@ import SmartAlerts from './components/SmartAlerts'
 import BalanceInput from './components/BalanceInput'
 import CashFlowCard from './components/CashFlowCard'
 import ReserveCard from './components/ReserveCard'
+import EconomicIndicators from './components/EconomicIndicators'
 import { forecastMonth } from './utils/forecast'
 import { calculateReserveForecast } from './utils/reserveForecast'
+import { fetchIndicators } from './services/bcbService'
 import { useToast } from './contexts/ToastContext'
 
 const LEGACY_KEY = 'dashboard-financas-totals'
@@ -114,6 +116,7 @@ export default function App() {
   const [currentSnapshot, setCurrentSnapshot] = useState(null)
   const [reserveTotal, setReserveTotal] = useState(null)
   const [pendingIncome, setPendingIncome] = useState(0)
+  const [indicators, setIndicators] = useState(null)
 
   const totalsRef = useRef(totals)
   const statusTimer = useRef(null)
@@ -312,6 +315,10 @@ export default function App() {
     loadCategories()
     loadSnapshots()
     loadIncomeAndExpenseData(selectedMonth)
+    
+    // Buscar indicadores econômicos (não bloqueia o carregamento)
+    fetchIndicators().then(setIndicators).catch(() => setIndicators(null))
+    
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, selectedMonth])
 
@@ -683,6 +690,9 @@ export default function App() {
             {showDash && (
               <ReserveCard forecast={reserveForecast} />
             )}
+
+            {/* Indicadores Econômicos */}
+            <EconomicIndicators data={indicators} />
 
             {/* Bloco 3: Visão Orçamentária */}
             {showDash && (
