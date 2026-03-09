@@ -400,9 +400,11 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
 
 function ReserveSection({ forecast }) {
   const health = HEALTH_META[forecast.reserveHealth] || HEALTH_META.none
+  const hasDeficit = forecast.deficit > 0
 
   return (
     <div className="border-t border-gray-200 dark:border-gray-800 pt-4 space-y-3">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-sm">🛡️</span>
@@ -413,9 +415,42 @@ function ReserveSection({ forecast }) {
         </span>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* Cálculo visível: mostra a conta para o usuário entender */}
+      {hasDeficit && (
+        <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 p-3 space-y-1.5">
+          <div className="flex items-center justify-between text-[10px]">
+            <span className="text-gray-500 dark:text-gray-400">Despesas (fixas + cartão)</span>
+            <span className="font-bold text-gray-700 dark:text-gray-300">{BRL(forecast.essentialExpenses)}</span>
+          </div>
+          <div className="flex items-center justify-between text-[10px]">
+            <span className="text-gray-500 dark:text-gray-400">− Receita do mês</span>
+            <span className="font-bold text-emerald-600 dark:text-emerald-400">− {BRL(forecast.totalIncomeThisMonth)}</span>
+          </div>
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-1 flex items-center justify-between text-[10px]">
+            <span className="text-gray-500 dark:text-gray-400">= Déficit</span>
+            <span className="font-bold text-red-600 dark:text-red-400">{BRL(forecast.deficit)}</span>
+          </div>
+          {forecast.currentAccountBalance > 0 && (
+            <div className="flex items-center justify-between text-[10px]">
+              <span className="text-gray-500 dark:text-gray-400">− Saldo em conta</span>
+              <span className="font-bold text-indigo-600 dark:text-indigo-400">− {BRL(forecast.currentAccountBalance)}</span>
+            </div>
+          )}
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-1 flex items-center justify-between text-xs">
+            <span className="font-semibold text-gray-700 dark:text-gray-300">
+              {forecast.needsReserve ? '= Usar da reserva' : '= Saldo cobre o déficit'}
+            </span>
+            <span className={`font-bold ${forecast.needsReserve ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+              {forecast.needsReserve ? BRL(forecast.reserveNeeded) : 'R$ 0'}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* KPIs: Reserva, Usar da Reserva, Reserva Após Uso */}
+      <div className="grid grid-cols-3 gap-3">
         <div className="rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50/50 dark:bg-violet-950/50 p-3">
-          <p className="text-[10px] font-semibold text-violet-500 dark:text-violet-400 uppercase">Saldo Reserva</p>
+          <p className="text-[10px] font-semibold text-violet-500 dark:text-violet-400 uppercase">Reserva Atual</p>
           <p className="text-sm font-bold text-violet-600 dark:text-violet-400">{BRL(forecast.reserveTotal)}</p>
           <p className="text-[10px] text-gray-400 dark:text-gray-500">
             {forecast.monthsOfRunway > 0 ? `${forecast.monthsOfRunway} mes${forecast.monthsOfRunway !== 1 ? 'es' : ''} de cobertura` : '—'}
@@ -429,39 +464,23 @@ function ReserveSection({ forecast }) {
         }`}>
           <p className={`text-[10px] font-semibold uppercase ${
             forecast.needsReserve ? 'text-amber-500 dark:text-amber-400' : 'text-emerald-500 dark:text-emerald-400'
-          }`}>Uso Projetado</p>
+          }`}>Usar da Reserva</p>
           <p className={`text-sm font-bold ${
             forecast.needsReserve ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'
           }`}>
-            {forecast.needsReserve ? BRL(forecast.reserveUsageForecast) : 'Nenhum'}
+            {forecast.needsReserve ? BRL(forecast.reserveNeeded) : 'Nenhum'}
           </p>
           <p className="text-[10px] text-gray-400 dark:text-gray-500">
-            {forecast.needsReserve ? 'Gastos > Receita' : 'Receita cobre gastos'}
-          </p>
-        </div>
-
-        <div className={`rounded-xl border p-3 ${
-          forecast.needsImmediateTransfer
-            ? 'border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/50'
-            : 'border-gray-200 dark:border-gray-800'
-        }`}>
-          <p className={`text-[10px] font-semibold uppercase ${
-            forecast.needsImmediateTransfer ? 'text-red-500 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'
-          }`}>Transferir Agora</p>
-          <p className={`text-sm font-bold ${
-            forecast.needsImmediateTransfer ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'
-          }`}>
-            {forecast.needsImmediateTransfer ? BRL(forecast.immediateTransferNeeded) : '—'}
-          </p>
-          <p className="text-[10px] text-gray-400 dark:text-gray-500">
-            {forecast.needsImmediateTransfer ? 'Para cobrir pendentes' : 'Sem necessidade'}
+            {forecast.needsReserve ? 'Transferir para a conta' : 'Receita cobre tudo'}
           </p>
         </div>
 
         <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3">
           <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase">Reserva Após Uso</p>
           <p className="text-sm font-bold text-gray-700 dark:text-gray-300">{BRL(forecast.reserveAfterUsage)}</p>
-          <p className="text-[10px] text-gray-400 dark:text-gray-500">Saldo projetado</p>
+          <p className="text-[10px] text-gray-400 dark:text-gray-500">
+            {forecast.needsReserve ? 'Saldo restante' : 'Intacta'}
+          </p>
         </div>
       </div>
 
@@ -487,7 +506,10 @@ function ReserveSection({ forecast }) {
         </div>
       )}
 
-      <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 italic">
+      {/* Mensagem contextual */}
+      <p className={`text-[10px] sm:text-xs font-medium ${
+        forecast.needsReserve ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'
+      }`}>
         {forecast.message}
       </p>
     </div>
