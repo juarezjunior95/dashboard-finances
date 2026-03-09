@@ -462,13 +462,13 @@ export default function App() {
     const recurringInc = incomeBreakdown?.hasBreakdown ? incomeBreakdown.recurring : (totals.receita || 0)
     const totalIncome = totals.receita || 0
 
-    const essentialProjected = (forecast.projections?.fixas?.projected || 0) + (forecast.projections?.cartao?.projected || 0)
+    // Despesas essenciais REAIS (já registradas), não projeções especulativas do forecast
     const currentEssential = (totals.fixas || 0) + (totals.cartao || 0)
 
     return calculateReserveForecast({
       totalIncomeThisMonth: totalIncome,
       recurringIncome: recurringInc,
-      essentialExpensesProjected: essentialProjected,
+      essentialExpensesProjected: currentEssential,
       currentAccountBalance: effectiveBalance,
       pendingExpenses: expenseStatus?.pending || 0,
       reserveTotal,

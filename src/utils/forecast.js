@@ -118,7 +118,7 @@ function buildAlertSuggestion({ currentSaldo, receitaProjetada, orcamentoDiario,
 const CATEGORY_MODELS = {
   receita: 'receita',
   fixas: 'lump_sum',
-  cartao: 'linear',
+  cartao: 'lump_sum',
   invest: 'lump_sum',
 }
 
