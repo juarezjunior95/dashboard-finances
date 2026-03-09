@@ -117,10 +117,10 @@ function InlineBalanceField({ icon, label, hint, value, updatedAt, onSave, onCle
   )
 }
 
-export default function BalanceInput({ value, updatedAt, onSave, reserveTotal, onSaveReserve, debtAmortization, onSaveDebt }) {
+export default function BalanceInput({ value, updatedAt, onSave, reserveTotal, onSaveReserve }) {
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-5">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
         <InlineBalanceField
           icon="🏦"
           label="Saldo da conta"
@@ -140,16 +140,6 @@ export default function BalanceInput({ value, updatedAt, onSave, reserveTotal, o
           onSave={(v) => onSaveReserve(v)}
           onClear={() => onSaveReserve(null)}
           accentColor="violet"
-        />
-        <InlineBalanceField
-          icon="📋"
-          label="Amortização de dívida"
-          hint="Informar amortização"
-          value={debtAmortization}
-          updatedAt={null}
-          onSave={(v) => onSaveDebt(v)}
-          onClear={() => onSaveDebt(null)}
-          accentColor="rose"
         />
       </div>
     </div>

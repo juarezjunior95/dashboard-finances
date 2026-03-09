@@ -7,7 +7,7 @@ const BRL = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', curren
  *
  * Mostra a conta completa para o usuário entender quanto precisa da reserva:
  *   Saldo real + Receitas esperadas = Caixa disponível
- *   Contas pendentes + Amortização = Total a pagar
+ *   Contas pendentes = Total a pagar
  *   Necessidade de reserva = max(0, Total a pagar - Caixa disponível)
  */
 export default function CashFlowCard({
@@ -15,7 +15,6 @@ export default function CashFlowCard({
   totalReceita = 0,
   totalExpenses = 0,
   expenseStatus = null,
-  debtAmortization = 0,
   reserveTotal = 0,
 }) {
   const cashFlow = useMemo(() => {
@@ -28,8 +27,7 @@ export default function CashFlowCard({
     const totalAPagar = hasPaidData
       ? totalExpenses - jaPago
       : totalExpenses
-    const debt = debtAmortization || 0
-    const contasPendentes = Math.max(0, totalAPagar - debt)
+    const contasPendentes = totalAPagar
 
     const necessidadeReserva = Math.max(0, Math.round((totalAPagar - caixaDisponivel) * 100) / 100)
     const reservaAposUso = Math.max(0, Math.round(((reserveTotal || 0) - necessidadeReserva) * 100) / 100)
@@ -44,7 +42,6 @@ export default function CashFlowCard({
       jaPago,
       hasPaidData,
       contasPendentes,
-      debt,
       totalAPagar,
       necessidadeReserva,
       reservaAposUso,
@@ -52,7 +49,7 @@ export default function CashFlowCard({
       temReserva,
       precisaReserva: necessidadeReserva > 0,
     }
-  }, [realBalance, totalReceita, totalExpenses, expenseStatus, debtAmortization, reserveTotal])
+  }, [realBalance, totalReceita, totalExpenses, expenseStatus, reserveTotal])
 
   const cf = cashFlow
 
@@ -101,12 +98,6 @@ export default function CashFlowCard({
               <span className="text-xs text-gray-500 dark:text-gray-400">Contas pendentes</span>
               <span className="text-xs font-bold text-rose-600 dark:text-rose-400">{BRL(cf.contasPendentes)}</span>
             </div>
-            {cf.debt > 0 && (
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500 dark:text-gray-400">+ Amortização de dívida</span>
-                <span className="text-xs font-bold text-rose-600 dark:text-rose-400">{BRL(cf.debt)}</span>
-              </div>
-            )}
             <div className="border-t border-gray-200 dark:border-gray-700 pt-2 flex items-center justify-between">
               <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">= Total a pagar</span>
               <span className="text-sm font-bold text-rose-700 dark:text-rose-400">{BRL(cf.totalAPagar)}</span>

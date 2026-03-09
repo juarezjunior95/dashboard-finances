@@ -113,7 +113,6 @@ export default function App() {
   const [realBalanceUpdatedAt, setRealBalanceUpdatedAt] = useState(null)
   const [currentSnapshot, setCurrentSnapshot] = useState(null)
   const [reserveTotal, setReserveTotal] = useState(null)
-  const [debtAmortization, setDebtAmortization] = useState(null)
   const [pendingIncome, setPendingIncome] = useState(0)
 
   const totalsRef = useRef(totals)
@@ -173,12 +172,10 @@ export default function App() {
         setRealBalance(snap.real_balance != null ? Number(snap.real_balance) : null)
         setRealBalanceUpdatedAt(snap.real_balance_updated_at || null)
         setReserveTotal(snap.reserve_total != null ? Number(snap.reserve_total) : null)
-        setDebtAmortization(snap.debt_amortization != null ? Number(snap.debt_amortization) : null)
       } else {
         setRealBalance(null)
         setRealBalanceUpdatedAt(null)
         setReserveTotal(null)
-        setDebtAmortization(null)
       }
 
       if (snap) {
@@ -253,7 +250,6 @@ export default function App() {
       setRealBalanceUpdatedAt(null)
       setCurrentSnapshot(null)
       setReserveTotal(null)
-      setDebtAmortization(null)
       setPendingIncome(0)
       showToast({ type: 'error', message: 'Erro ao carregar dados do mês.' })
     } finally {
@@ -492,17 +488,6 @@ export default function App() {
     }
   }, [showToast])
 
-  const handleSaveDebtAmortization = useCallback(async (value) => {
-    const month = selectedMonthRef.current
-    try {
-      await upsertSnapshot({ month, ...totalsRef.current, debt_amortization: value })
-      setDebtAmortization(value)
-      showToast({ type: 'success', message: value != null ? 'Amortização atualizada.' : 'Amortização removida.' })
-    } catch {
-      showToast({ type: 'error', message: 'Erro ao salvar amortização.' })
-    }
-  }, [showToast])
-
   const handleSaveRealBalance = useCallback(async (value) => {
     const month = selectedMonthRef.current
     try {
@@ -672,7 +657,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Inputs manuais: saldo, reserva, amortização */}
+            {/* Inputs manuais: saldo e reserva */}
             {showDash && (
               <BalanceInput
                 value={realBalance}
@@ -680,8 +665,6 @@ export default function App() {
                 onSave={handleSaveRealBalance}
                 reserveTotal={reserveTotal}
                 onSaveReserve={handleSaveReserveTotal}
-                debtAmortization={debtAmortization}
-                onSaveDebt={handleSaveDebtAmortization}
               />
             )}
 
@@ -692,7 +675,6 @@ export default function App() {
                 totalReceita={totals.receita}
                 totalExpenses={(totals.fixas || 0) + (totals.cartao || 0) + (totals.invest || 0)}
                 expenseStatus={expenseStatus}
-                debtAmortization={debtAmortization}
                 reserveTotal={reserveTotal}
               />
             )}

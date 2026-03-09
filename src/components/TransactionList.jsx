@@ -53,6 +53,27 @@ function valueColor(category, catLookup) {
   return 'text-red-600 dark:text-red-400'
 }
 
+const STATUS_CYCLE = [null, 'pending', 'paid']
+const STATUS_META = {
+  paid:    { label: 'Pago',     cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300', icon: '✓' },
+  pending: { label: 'Pendente', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-300', icon: '⏳' },
+  null:    { label: '—',        cls: 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500', icon: '' },
+}
+
+function StatusBadge({ status, onClick }) {
+  const meta = STATUS_META[status] || STATUS_META[null]
+  return (
+    <button
+      onClick={onClick}
+      title={`Status: ${meta.label}. Clique para alterar.`}
+      className={`inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-semibold rounded-full cursor-pointer transition-colors hover:ring-2 hover:ring-indigo-300 dark:hover:ring-indigo-600 ${meta.cls}`}
+    >
+      {meta.icon && <span>{meta.icon}</span>}
+      <span>{meta.label}</span>
+    </button>
+  )
+}
+
 const EMPTY_FORM = { date: '', description: '', category: 'fixas', amount: '' }
 
 function TransactionForm({ initial, onSave, onCancel, saving, allCategories }) {
@@ -127,16 +148,17 @@ function TransactionForm({ initial, onSave, onCancel, saving, allCategories }) {
   )
 }
 
-function MobileCard({ tx, onEdit, onDelete, catLookup }) {
+function MobileCard({ tx, onEdit, onDelete, onToggleStatus, catLookup }) {
   const cat = catLookup[tx.category] || catLookup.fixas || { label: tx.category, bgColor: '#6b7280' }
   return (
     <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800">
       <div className="flex-1 min-w-0 space-y-1">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="inline-block px-2 py-0.5 text-[10px] font-semibold rounded-full"
             style={{ backgroundColor: `${cat.bgColor}18`, color: cat.bgColor }}>
             {cat.label}
           </span>
+          <StatusBadge status={tx.payment_status || null} onClick={() => onToggleStatus(tx)} />
           <span className="text-[10px] text-gray-400 dark:text-gray-500">{formatDate(tx.date)}</span>
         </div>
         <p className="text-xs text-gray-700 dark:text-gray-300 truncate" title={tx.description}>
@@ -170,6 +192,7 @@ export default function TransactionList({ month, onTotalsChanged, onDetailedTota
   const [saving, setSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [filterCat, setFilterCat] = useState('all')
+  const [filterStatus, setFilterStatus] = useState('all')
   const [search, setSearch] = useState('')
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
 
@@ -196,6 +219,7 @@ export default function TransactionList({ month, onTotalsChanged, onDetailedTota
     setAdding(false)
     setEditId(null)
     setFilterCat('all')
+    setFilterStatus('all')
     setSearch('')
     setVisibleCount(PAGE_SIZE)
     setExpanded(null)
@@ -252,15 +276,45 @@ export default function TransactionList({ month, onTotalsChanged, onDetailedTota
     }
   }, [deleteTarget, month, load, recalcAndNotify, showToast])
 
+  const handleToggleStatus = useCallback(async (tx) => {
+    const currentIdx = STATUS_CYCLE.indexOf(tx.payment_status || null)
+    const nextStatus = STATUS_CYCLE[(currentIdx + 1) % STATUS_CYCLE.length]
+    try {
+      await upsertTransaction({
+        id: tx.id,
+        month,
+        category: tx.category,
+        description: tx.description,
+        amount: tx.amount,
+        date: tx.date,
+        source: tx.source,
+        payment_status: nextStatus,
+      })
+      setTransactions(prev => prev.map(t =>
+        t.id === tx.id ? { ...t, payment_status: nextStatus } : t
+      ))
+      await recalcAndNotify()
+    } catch {
+      showToast({ type: 'error', message: 'Erro ao alterar status.' })
+    }
+  }, [month, recalcAndNotify, showToast])
+
   const filtered = useMemo(() => {
     let items = transactions
     if (filterCat !== 'all') items = items.filter(t => t.category === filterCat)
+    if (filterStatus !== 'all') {
+      items = items.filter(t => {
+        const s = t.payment_status || null
+        if (filterStatus === 'unknown') return s === null
+        return s === filterStatus
+      })
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       items = items.filter(t => (t.description || '').toLowerCase().includes(q))
     }
     return items
-  }, [transactions, filterCat, search])
+  }, [transactions, filterCat, filterStatus, search])
 
   const visible = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount])
 
@@ -331,19 +385,41 @@ export default function TransactionList({ month, onTotalsChanged, onDetailedTota
 
           {/* Filters */}
           {transactions.length > 0 && (
-            <div className="flex flex-col sm:flex-row gap-2">
-              <select value={filterCat} onChange={e => { setFilterCat(e.target.value); setVisibleCount(PAGE_SIZE) }}
-                className="px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-400 focus:outline-none">
-                <option value="all">Todas</option>
-                {allCats.map(c => <option key={c.key} value={c.key}>{c.icon ? `${c.icon} ` : ''}{c.label}</option>)}
-              </select>
-              <div className="relative flex-1">
-                <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input type="text" value={search} onChange={e => { setSearch(e.target.value); setVisibleCount(PAGE_SIZE) }}
-                  placeholder="Buscar descrição..."
-                  className="w-full pl-7 pr-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+            <div className="space-y-2">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <select value={filterCat} onChange={e => { setFilterCat(e.target.value); setVisibleCount(PAGE_SIZE) }}
+                  className="px-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-400 focus:outline-none">
+                  <option value="all">Todas categorias</option>
+                  {allCats.map(c => <option key={c.key} value={c.key}>{c.icon ? `${c.icon} ` : ''}{c.label}</option>)}
+                </select>
+                <div className="relative flex-1">
+                  <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <input type="text" value={search} onChange={e => { setSearch(e.target.value); setVisibleCount(PAGE_SIZE) }}
+                    placeholder="Buscar descrição..."
+                    className="w-full pl-7 pr-2 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-indigo-400 focus:outline-none" />
+                </div>
+              </div>
+              <div className="flex gap-1.5 flex-wrap">
+                {[
+                  { key: 'all', label: 'Todos' },
+                  { key: 'paid', label: 'Pago' },
+                  { key: 'pending', label: 'Pendente' },
+                  { key: 'unknown', label: 'Sem status' },
+                ].map(opt => (
+                  <button
+                    key={opt.key}
+                    onClick={() => { setFilterStatus(opt.key); setVisibleCount(PAGE_SIZE) }}
+                    className={`px-2.5 py-1 text-[10px] font-semibold rounded-full cursor-pointer transition-colors ${
+                      filterStatus === opt.key
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
               </div>
             </div>
           )}
@@ -367,6 +443,7 @@ export default function TransactionList({ month, onTotalsChanged, onDetailedTota
                     <th className="text-left py-2 font-semibold">Descrição</th>
                     <th className="text-left py-2 font-semibold w-28">Categoria</th>
                     <th className="text-right py-2 font-semibold w-28">Valor</th>
+                    <th className="text-center py-2 font-semibold w-24">Status</th>
                     <th className="text-right py-2 font-semibold w-16">Ações</th>
                   </tr>
                 </thead>
@@ -375,7 +452,7 @@ export default function TransactionList({ month, onTotalsChanged, onDetailedTota
                     if (editId === tx.id) {
                       return (
                         <tr key={tx.id}>
-                          <td colSpan={5} className="py-2">
+                          <td colSpan={6} className="py-2">
                             <TransactionForm
                               initial={{ date: tx.date?.split('T')[0] || '', description: tx.description, category: tx.category, amount: tx.amount }}
                               onSave={handleSaveEdit}
@@ -402,6 +479,9 @@ export default function TransactionList({ month, onTotalsChanged, onDetailedTota
                         </td>
                         <td className={`py-2 text-right font-bold tabular-nums ${valueColor(tx.category, catLookup)}`}>
                           {BRL(tx.amount)}
+                        </td>
+                        <td className="py-2 text-center">
+                          <StatusBadge status={tx.payment_status || null} onClick={() => handleToggleStatus(tx)} />
                         </td>
                         <td className="py-2 text-right">
                           <div className="flex items-center justify-end gap-1">
@@ -445,6 +525,7 @@ export default function TransactionList({ month, onTotalsChanged, onDetailedTota
                     tx={tx}
                     onEdit={(t) => { setEditId(t.id); setAdding(false) }}
                     onDelete={(t) => setDeleteTarget(t)}
+                    onToggleStatus={handleToggleStatus}
                     catLookup={catLookup}
                   />
                 )
