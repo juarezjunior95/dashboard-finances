@@ -53,7 +53,7 @@ export async function getSnapshot(month) {
   }
 }
 
-export async function upsertSnapshot({ month, receita, fixas, cartao, invest, recurring_income, extraordinary_income, reserve_usage, real_balance, reserve_total }) {
+export async function upsertSnapshot({ month, receita, fixas, cartao, invest, recurring_income, extraordinary_income, reserve_usage, real_balance, reserve_total, debt_amortization }) {
   if (!/^\d{4}-\d{2}$/.test(month)) {
     throw new Error('Mês inválido. Use YYYY-MM.')
   }
@@ -75,6 +75,7 @@ export async function upsertSnapshot({ month, receita, fixas, cartao, invest, re
     if (real_balance != null) payload.real_balance_updated_at = new Date().toISOString()
   }
   if (reserve_total !== undefined) payload.reserve_total = reserve_total != null ? Number(reserve_total) : null
+  if (debt_amortization !== undefined) payload.debt_amortization = debt_amortization != null ? Number(debt_amortization) : null
 
   const user = await getUser()
 

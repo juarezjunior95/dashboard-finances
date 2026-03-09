@@ -408,44 +408,26 @@ export default function Dashboard({
     [dark, textColor, gridColor, receita],
   )
 
+  const deficitOrcamentario = receita - fixas - cartao - invest
+
   return (
     <section className="w-full max-w-5xl mx-auto space-y-4 sm:space-y-8">
-      {/* Row 1: Saldo Real / Saldo Calculado (destaque) */}
-      <div
-        className={`rounded-2xl px-4 sm:px-6 py-4 sm:py-5 border ${
-          saldoExibido >= 0
-            ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950 dark:border-emerald-800'
-            : 'bg-red-50 border-red-200 dark:bg-red-950 dark:border-red-800'
-        }`}
-      >
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
-              {hasRealBalance ? 'Saldo Real' : 'Saldo Calculado'}
-              {!hasRealBalance && (
-                <span className="ml-1.5 inline-flex px-1.5 py-0.5 rounded text-[9px] font-medium bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400">
-                  calculado
-                </span>
-              )}
-            </p>
-            <p className={`text-xl sm:text-2xl font-bold ${
-              saldoExibido >= 0
-                ? 'text-emerald-700 dark:text-emerald-400'
-                : 'text-red-700 dark:text-red-400'
-            }`}>
-              {formatBRL(saldoExibido)}
-            </p>
-          </div>
-          {hasRealBalance && saldoCalculado !== realBalance && (
-            <div className="text-right">
-              <p className="text-[10px] text-gray-400 dark:text-gray-500">Saldo calculado</p>
-              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{formatBRL(saldoCalculado)}</p>
-            </div>
-          )}
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-base">📊</span>
+          <h2 className="text-sm font-semibold text-gray-600 dark:text-gray-400">Visão Orçamentária</h2>
+        </div>
+        <div className={`text-xs font-bold px-3 py-1 rounded-full ${
+          deficitOrcamentario >= 0
+            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300'
+            : 'bg-red-100 text-red-700 dark:bg-red-900/60 dark:text-red-300'
+        }`}>
+          {deficitOrcamentario >= 0 ? `Sobra ${formatBRL(deficitOrcamentario)}` : `Déficit ${formatBRL(Math.abs(deficitOrcamentario))}`}
         </div>
       </div>
 
-      {/* Row 2: Income breakdown (if available) */}
+      {/* Income breakdown (if available) */}
       {hasIncomeBreakdown && (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
           <div className="rounded-2xl border p-3 sm:p-4" style={{ backgroundColor: COLORS.receita.light, borderColor: `${COLORS.receita.bg}30` }}>

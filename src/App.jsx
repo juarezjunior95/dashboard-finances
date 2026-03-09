@@ -28,6 +28,8 @@ import {
 import ForecastCard from './components/ForecastCard'
 import SmartAlerts from './components/SmartAlerts'
 import BalanceInput from './components/BalanceInput'
+import CashFlowCard from './components/CashFlowCard'
+import ReserveCard from './components/ReserveCard'
 import { forecastMonth } from './utils/forecast'
 import { calculateReserveForecast } from './utils/reserveForecast'
 import { useToast } from './contexts/ToastContext'
@@ -111,6 +113,7 @@ export default function App() {
   const [realBalanceUpdatedAt, setRealBalanceUpdatedAt] = useState(null)
   const [currentSnapshot, setCurrentSnapshot] = useState(null)
   const [reserveTotal, setReserveTotal] = useState(null)
+  const [debtAmortization, setDebtAmortization] = useState(null)
   const [pendingIncome, setPendingIncome] = useState(0)
 
   const totalsRef = useRef(totals)
@@ -170,10 +173,12 @@ export default function App() {
         setRealBalance(snap.real_balance != null ? Number(snap.real_balance) : null)
         setRealBalanceUpdatedAt(snap.real_balance_updated_at || null)
         setReserveTotal(snap.reserve_total != null ? Number(snap.reserve_total) : null)
+        setDebtAmortization(snap.debt_amortization != null ? Number(snap.debt_amortization) : null)
       } else {
         setRealBalance(null)
         setRealBalanceUpdatedAt(null)
         setReserveTotal(null)
+        setDebtAmortization(null)
       }
 
       if (snap) {
@@ -248,6 +253,7 @@ export default function App() {
       setRealBalanceUpdatedAt(null)
       setCurrentSnapshot(null)
       setReserveTotal(null)
+      setDebtAmortization(null)
       setPendingIncome(0)
       showToast({ type: 'error', message: 'Erro ao carregar dados do mês.' })
     } finally {
@@ -456,19 +462,24 @@ export default function App() {
 
   const reserveForecast = useMemo(() => {
     if (reserveTotal == null || reserveTotal <= 0) return null
-    if (!forecast) return null
 
-    const effectiveBalance = realBalance != null ? realBalance : forecast.currentSaldo
-    const recurringInc = incomeBreakdown?.hasBreakdown ? incomeBreakdown.recurring : (totals.receita || 0)
+    const saldoReal = realBalance || 0
+    const receita = totals.receita || 0
+    const totalExpenses = (totals.fixas || 0) + (totals.cartao || 0) + (totals.invest || 0)
+    const jaPago = expenseStatus?.paid || 0
+    const totalAPagar = jaPago > 0 ? totalExpenses - jaPago : totalExpenses
+    const caixaDisponivel = saldoReal + receita
+    const recurringInc = incomeBreakdown?.hasBreakdown ? incomeBreakdown.recurring : receita
+    const essentialExp = (totals.fixas || 0) + (totals.cartao || 0)
 
     return calculateReserveForecast({
-      totalIncomeThisMonth: totals.receita || 0,
+      caixaDisponivel,
+      totalAPagar,
       recurringIncome: recurringInc,
-      essentialExpenses: (totals.fixas || 0) + (totals.cartao || 0),
-      currentAccountBalance: effectiveBalance,
+      essentialExpenses: essentialExp,
       reserveTotal,
     })
-  }, [reserveTotal, forecast, realBalance, incomeBreakdown, totals, expenseStatus, pendingIncome])
+  }, [reserveTotal, realBalance, totals, expenseStatus, incomeBreakdown])
 
   const handleSaveReserveTotal = useCallback(async (value) => {
     const month = selectedMonthRef.current
@@ -478,6 +489,17 @@ export default function App() {
       showToast({ type: 'success', message: value != null ? 'Saldo da reserva atualizado.' : 'Saldo da reserva removido.' })
     } catch {
       showToast({ type: 'error', message: 'Erro ao salvar saldo da reserva.' })
+    }
+  }, [showToast])
+
+  const handleSaveDebtAmortization = useCallback(async (value) => {
+    const month = selectedMonthRef.current
+    try {
+      await upsertSnapshot({ month, ...totalsRef.current, debt_amortization: value })
+      setDebtAmortization(value)
+      showToast({ type: 'success', message: value != null ? 'Amortização atualizada.' : 'Amortização removida.' })
+    } catch {
+      showToast({ type: 'error', message: 'Erro ao salvar amortização.' })
     }
   }, [showToast])
 
@@ -650,7 +672,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Saldo real da conta */}
+            {/* Inputs manuais: saldo, reserva, amortização */}
             {showDash && (
               <BalanceInput
                 value={realBalance}
@@ -658,10 +680,29 @@ export default function App() {
                 onSave={handleSaveRealBalance}
                 reserveTotal={reserveTotal}
                 onSaveReserve={handleSaveReserveTotal}
+                debtAmortization={debtAmortization}
+                onSaveDebt={handleSaveDebtAmortization}
               />
             )}
 
-            {/* Dashboard */}
+            {/* Bloco 1: Fluxo de Caixa Real */}
+            {showDash && (
+              <CashFlowCard
+                realBalance={realBalance}
+                totalReceita={totals.receita}
+                totalExpenses={(totals.fixas || 0) + (totals.cartao || 0) + (totals.invest || 0)}
+                expenseStatus={expenseStatus}
+                debtAmortization={debtAmortization}
+                reserveTotal={reserveTotal}
+              />
+            )}
+
+            {/* Bloco 2: Fundo de Reserva */}
+            {showDash && (
+              <ReserveCard forecast={reserveForecast} />
+            )}
+
+            {/* Bloco 3: Visão Orçamentária */}
             {showDash && (
               <Dashboard
                 receita={totals.receita}
@@ -690,7 +731,6 @@ export default function App() {
                 prevTotals={prevTotals}
                 incomeBreakdown={incomeBreakdown}
                 realBalance={realBalance}
-                reserveForecast={reserveForecast}
               />
             )}
 
