@@ -14,7 +14,7 @@ import Welcome from './components/Welcome'
 import { SkeletonDashboardPage, SkeletonBudgetProgress, SkeletonInvestmentPlanner } from './components/Skeleton'
 import { useDarkMode } from './hooks/useDarkMode'
 import { useAuth } from './contexts/AuthContext'
-import { getSnapshot, upsertSnapshot, listMonths, listAllSnapshots, getEffectiveIncome } from './services/snapshotService'
+import { getSnapshot, upsertSnapshot, listMonths, listAllSnapshots, getEffectiveIncome, deleteSnapshot } from './services/snapshotService'
 import { listCategories } from './services/categoryService'
 import {
   getTransactionTotals,
@@ -24,6 +24,7 @@ import {
   upsertTransaction,
   deleteTransactionsBySource,
   listTransactions,
+  clearTransactions,
 } from './services/transactionService'
 import ForecastCard from './components/ForecastCard'
 import SmartAlerts from './components/SmartAlerts'
@@ -421,10 +422,26 @@ export default function App() {
   }, [loadSnapshots, loadIncomeAndExpenseData, showToast])
 
   const handleReset = async () => {
+    const month = selectedMonthRef.current
+    try {
+      await clearTransactions(month)
+      await deleteSnapshot(month)
+    } catch {
+      showToast({ type: 'error', message: 'Erro ao limpar dados do mês.' })
+    }
     setTotals({ ...EMPTY })
     totalsRef.current = { ...EMPTY }
     setShowDash(false)
     setSaveStatus(null)
+    setTxCount(0)
+    setCurrentSnapshot(null)
+    setRealBalance(null)
+    setRealBalanceUpdatedAt(null)
+    setReserveTotal(null)
+    setIncomeBreakdown(null)
+    setExpenseStatus(null)
+    setPendingIncome(0)
+    refreshMonths()
   }
 
   const handleMonthChange = (month) => {

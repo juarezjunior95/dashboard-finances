@@ -321,10 +321,12 @@ export default function TransactionList({ month, onTotalsChanged, onDetailedTota
   const filteredTotals = useMemo(() => {
     const totals = { fixas: 0, cartao: 0, invest: 0, receita: 0 }
     for (const tx of filtered) {
-      if (tx.category in totals) totals[tx.category] += Number(tx.amount) || 0
+      const info = catLookup[tx.category]
+      const parent = info?.parent ?? tx.category
+      if (parent in totals) totals[parent] += Number(tx.amount) || 0
     }
     return totals
-  }, [filtered])
+  }, [filtered, catLookup])
 
   const totalGeral = filteredTotals.receita - filteredTotals.fixas - filteredTotals.cartao - filteredTotals.invest
 

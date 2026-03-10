@@ -6,6 +6,7 @@ import { bulkInsertTransactions, listTransactions, clearTransactions } from '../
 import { listCategories } from '../services/categoryService'
 
 const ACCEPTED = '.csv,.xlsx,.xls,.xml'
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10 MB
 
 const BASE_CATEGORY_MAP = {
   fixa: 'fixas',
@@ -391,6 +392,11 @@ export default function FileImporter({ onTotals, month }) {
       setImportModal(null)
 
       try {
+        if (file.size > MAX_FILE_SIZE_BYTES) {
+          throw new Error(
+            `Arquivo muito grande (máx. ${MAX_FILE_SIZE_BYTES / 1024 / 1024} MB). Escolha um arquivo menor.`,
+          )
+        }
         const parser = getParser(file.name)
         if (!parser) {
           throw new Error(

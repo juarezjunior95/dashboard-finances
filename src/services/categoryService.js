@@ -52,7 +52,10 @@ export const AVAILABLE_COLORS = [
 export const COLOR_MAP = Object.fromEntries(AVAILABLE_COLORS.map(c => [c.key, c.bg]))
 
 export function slugify(text) {
-  return text
+  if (text == null || typeof text !== 'string') return ''
+  const trimmed = text.trim()
+  if (!trimmed) return ''
+  return trimmed
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')

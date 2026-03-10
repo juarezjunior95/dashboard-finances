@@ -221,8 +221,10 @@ export async function getTransactionTotals(month) {
     }
   }
   
-  console.log('[getTransactionTotals]', { month, txCount: txs.length, detailedTotals, parentMap, totals })
-  
+  if (import.meta.env.DEV) {
+    console.log('[getTransactionTotals]', { month, txCount: txs.length, detailedTotals, parentMap, totals })
+  }
+
   return totals
 }
 
