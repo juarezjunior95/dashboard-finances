@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getBudgets, upsertBudget } from '../services/budgetService'
 import { useToast } from '../contexts/ToastContext'
 import { SkeletonBudgetProgress } from './Skeleton'
@@ -37,9 +37,12 @@ export default function BudgetProgress({ totals, onBudgetAlerts, categories, onC
   const saveTimers = useRef({})
   const { showToast } = useToast()
 
-  const budgetCats = categories
-    ? categories.filter(c => c.parent_category !== 'receita')
-    : DEFAULT_BUDGET_CATS
+  const budgetCats = useMemo(
+    () => (categories
+      ? categories.filter(c => c.parent_category !== 'receita')
+      : DEFAULT_BUDGET_CATS),
+    [categories]
+  )
 
   useEffect(() => () => {
     Object.values(saveTimers.current).forEach(clearTimeout)

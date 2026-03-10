@@ -268,6 +268,11 @@ export default function App() {
     } catch { /* fallback handled in service */ }
   }, [])
 
+  const handleCategoriesChanged = useCallback((cats) => {
+    setUserCategories(cats)
+    loadCategories()
+  }, [loadCategories])
+
   const loadSnapshots = useCallback(async () => {
     try {
       const snaps = await listAllSnapshots()
@@ -765,7 +770,7 @@ export default function App() {
               totals={totals}
               onBudgetAlerts={setBudgetAlerts}
               categories={userCategories}
-              onCategoriesChanged={(cats) => { setUserCategories(cats); loadCategories() }}
+              onCategoriesChanged={handleCategoriesChanged}
             />
 
             {/* Planejamento de Investimentos */}
