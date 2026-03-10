@@ -4,12 +4,10 @@ const BRL_PCT = (v) => `${v.toFixed(2)}%`
 const BRL = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 export default function EconomicIndicators({ data, investAmount = 0, reserveAmount = 0 }) {
-  // Não renderizar se não houver dados
-  if (!data) return null
-
-  const { selic, ipca, cdi, rendimentoReal, stale, fetchedAt } = data
-
+  // Hooks devem ser chamados incondicionalmente (Rules of Hooks).
+  // Sempre executar useMemo; o return null fica após todos os hooks.
   const formattedDate = useMemo(() => {
+    const fetchedAt = data?.fetchedAt
     if (!fetchedAt) return ''
     try {
       const date = new Date(fetchedAt)
@@ -17,17 +15,14 @@ export default function EconomicIndicators({ data, investAmount = 0, reserveAmou
     } catch {
       return ''
     }
-  }, [fetchedAt])
+  }, [data?.fetchedAt])
 
-  const rendimentoPositivo = rendimentoReal > 0
-  const rendimentoAbs = Math.abs(rendimentoReal)
-
-  // Calcular projeções de rendimento
   const totalInvestido = investAmount + reserveAmount
   const hasInvestments = totalInvestido > 0
 
   const projections = useMemo(() => {
-    if (!hasInvestments) return null
+    if (!data || !hasInvestments) return null
+    const { selic, ipca, cdi, rendimentoReal } = data
 
     // Rendimentos anuais
     const rendimentoSelic = (totalInvestido * selic.valor) / 100
@@ -51,7 +46,14 @@ export default function EconomicIndicators({ data, investAmount = 0, reserveAmou
         cdi: Math.round(rendimentoCDIMensal * 100) / 100,
       }
     }
-  }, [hasInvestments, totalInvestido, selic.valor, cdi.valor, ipca.valor, rendimentoReal])
+  }, [data, hasInvestments, totalInvestido])
+
+  // Return null apenas após todos os hooks (evita React Error #310 ao trocar de mês).
+  if (!data) return null
+
+  const { selic, ipca, cdi, rendimentoReal, stale } = data
+  const rendimentoPositivo = rendimentoReal > 0
+  const rendimentoAbs = Math.abs(rendimentoReal)
 
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-6 space-y-4">
