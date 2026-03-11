@@ -491,20 +491,19 @@ export default function App() {
     const saldoReal = realBalance || 0
     const receita = totals.receita || 0
     const totalExpenses = (totals.fixas || 0) + (totals.cartao || 0) + (totals.invest || 0)
-    const jaPago = expenseStatus?.paid || 0
-    const totalAPagar = jaPago > 0 ? totalExpenses - jaPago : totalExpenses
     const caixaDisponivel = saldoReal + receita
     const recurringInc = incomeBreakdown?.hasBreakdown ? incomeBreakdown.recurring : receita
     const essentialExp = (totals.fixas || 0) + (totals.cartao || 0)
 
+    // Usa totalExpenses (não subtrai "já pago") — status é informativo
     return calculateReserveForecast({
       caixaDisponivel,
-      totalAPagar,
+      totalAPagar: totalExpenses,
       recurringIncome: recurringInc,
       essentialExpenses: essentialExp,
       reserveTotal,
     })
-  }, [reserveTotal, realBalance, totals, expenseStatus, incomeBreakdown])
+  }, [reserveTotal, realBalance, totals, incomeBreakdown])
 
   const handleSaveReserveTotal = useCallback(async (value) => {
     const month = selectedMonthRef.current

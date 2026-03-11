@@ -5,10 +5,10 @@ const BRL = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', curren
 /**
  * Fluxo de Caixa Real — bloco principal do dashboard.
  *
- * Mostra a conta completa para o usuário entender quanto precisa da reserva:
- *   Saldo real + Receitas esperadas = Caixa disponível
- *   Contas pendentes = Total a pagar
- *   Necessidade de reserva = max(0, Total a pagar - Caixa disponível)
+ * O cálculo de reserva usa TOTAL de despesas do mês (não subtrai "já pago").
+ * Motivo: o saldo real já reflete pagamentos feitos. Subtrair "já pago"
+ * causaria oscilação ao mudar status, sem o usuário atualizar o saldo.
+ * O breakdown pago/pendente é puramente informativo.
  */
 export default function CashFlowCard({
   realBalance = 0,
@@ -23,13 +23,11 @@ export default function CashFlowCard({
     const caixaDisponivel = saldoReal + receitas
 
     const jaPago = expenseStatus?.paid || 0
-    const hasPaidData = jaPago > 0
-    const totalAPagar = hasPaidData
-      ? totalExpenses - jaPago
-      : totalExpenses
-    const contasPendentes = totalAPagar
+    const pendente = expenseStatus?.pending || 0
+    const hasPaidData = jaPago > 0 || pendente > 0
 
-    const necessidadeReserva = Math.max(0, Math.round((totalAPagar - caixaDisponivel) * 100) / 100)
+    // Reserva usa total de despesas — status é informativo
+    const necessidadeReserva = Math.max(0, Math.round((totalExpenses - caixaDisponivel) * 100) / 100)
     const reservaAposUso = Math.max(0, Math.round(((reserveTotal || 0) - necessidadeReserva) * 100) / 100)
 
     const temSaldoReal = realBalance != null && realBalance > 0
@@ -40,9 +38,9 @@ export default function CashFlowCard({
       receitas,
       caixaDisponivel,
       jaPago,
+      pendente,
       hasPaidData,
-      contasPendentes,
-      totalAPagar,
+      totalExpenses,
       necessidadeReserva,
       reservaAposUso,
       temSaldoReal,
@@ -88,20 +86,24 @@ export default function CashFlowCard({
           {/* Saídas */}
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 p-3 sm:p-4 space-y-2">
             <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">Saídas</p>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Gastos totais do mês</span>
+              <span className="text-sm font-bold text-rose-700 dark:text-rose-400">{BRL(cf.totalExpenses)}</span>
+            </div>
             {cf.hasPaidData && (
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500 dark:text-gray-400">Já pago</span>
-                <span className="text-xs font-bold text-gray-400 dark:text-gray-500 line-through">{BRL(cf.jaPago)}</span>
+              <div className="flex items-center gap-3 pt-1">
+                {cf.jaPago > 0 && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300 font-medium">
+                    Pago {BRL(cf.jaPago)}
+                  </span>
+                )}
+                {cf.pendente > 0 && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-300 font-medium">
+                    Pendente {BRL(cf.pendente)}
+                  </span>
+                )}
               </div>
             )}
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-500 dark:text-gray-400">Contas pendentes</span>
-              <span className="text-xs font-bold text-rose-600 dark:text-rose-400">{BRL(cf.contasPendentes)}</span>
-            </div>
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-2 flex items-center justify-between">
-              <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">= Total a pagar</span>
-              <span className="text-sm font-bold text-rose-700 dark:text-rose-400">{BRL(cf.totalAPagar)}</span>
-            </div>
           </div>
 
           {/* Resultado */}
@@ -120,7 +122,7 @@ export default function CashFlowCard({
                 <p className={`text-lg sm:text-xl font-bold mt-0.5 ${
                   cf.precisaReserva ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'
                 }`}>
-                  {cf.precisaReserva ? BRL(cf.necessidadeReserva) : BRL(cf.caixaDisponivel - cf.totalAPagar)}
+                  {cf.precisaReserva ? BRL(cf.necessidadeReserva) : BRL(cf.caixaDisponivel - cf.totalExpenses)}
                 </p>
               </div>
               {cf.precisaReserva && cf.temReserva && (
