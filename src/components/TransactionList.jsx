@@ -182,7 +182,7 @@ function MobileCard({ tx, onEdit, onDelete, onToggleStatus, catLookup }) {
 
 const PAGE_SIZE = 50
 
-export default function TransactionList({ month, onTotalsChanged, onDetailedTotals, categories }) {
+export default function TransactionList({ month, onTotalsChanged, onDetailedTotals, categories, onStatusChange }) {
   const { showToast } = useToast()
   const [transactions, setTransactions] = useState([])
   const [loading, setLoading] = useState(true)
@@ -294,6 +294,8 @@ export default function TransactionList({ month, onTotalsChanged, onDetailedTota
         t.id === tx.id ? { ...t, payment_status: nextStatus } : t
       ))
       await recalcAndNotify()
+      const statusLabel = STATUS_META[nextStatus]?.label || 'Sem status'
+      onStatusChange?.(tx.description || tx.category, statusLabel)
     } catch {
       showToast({ type: 'error', message: 'Erro ao alterar status.' })
     }

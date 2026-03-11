@@ -36,6 +36,10 @@ import { forecastMonth } from './utils/forecast'
 import { calculateReserveForecast } from './utils/reserveForecast'
 import { fetchIndicators } from './services/bcbService'
 import { useToast } from './contexts/ToastContext'
+import ActivityLog from './components/ActivityLog'
+import MonthlySummary from './components/MonthlySummary'
+import FinancialGoals from './components/FinancialGoals'
+import { logActivity, ACTIVITY_TYPES } from './services/activityLogService'
 
 const LEGACY_KEY = 'dashboard-financas-totals'
 const EMPTY = { receita: 0, fixas: 0, cartao: 0, invest: 0 }
@@ -119,6 +123,7 @@ export default function App() {
   const [reserveTransferred, setReserveTransferred] = useState(null)
   const [pendingIncome, setPendingIncome] = useState(0)
   const [indicators, setIndicators] = useState(null)
+  const [activityKey, setActivityKey] = useState(0)
 
   const totalsRef = useRef(totals)
   const statusTimer = useRef(null)
@@ -350,6 +355,8 @@ export default function App() {
       setTxCount(txs.length)
       loadSnapshots()
       loadIncomeAndExpenseData(month)
+      logActivity(month, { type: ACTIVITY_TYPES.IMPORT, description: `Planilha importada (${txs.length} transações)` })
+      setActivityKey(k => k + 1)
       setSaveStatus('saved')
       clearTimeout(statusTimer.current)
       statusTimer.current = setTimeout(() => setSaveStatus(null), 2000)
@@ -419,6 +426,8 @@ export default function App() {
           .map(([cat, d]) => `${ADJ_LABELS[cat].split(' (')[0]}: ${d > 0 ? '+' : ''}${BRL_FMT(d)}`)
           .join(', ')
         showToast({ type: 'success', message: `Ajustes aplicados: ${summary}` })
+        logActivity(month, { type: ACTIVITY_TYPES.MANUAL_ADJUST, description: `Ajuste manual: ${summary}` })
+        setActivityKey(k => k + 1)
       }
 
       setSaveStatus('saved')
@@ -438,6 +447,8 @@ export default function App() {
     } catch {
       showToast({ type: 'error', message: 'Erro ao limpar dados do mês.' })
     }
+    logActivity(month, { type: ACTIVITY_TYPES.RESET, description: 'Todos os dados do mês foram limpos' })
+    setActivityKey(k => k + 1)
     setTotals({ ...EMPTY })
     totalsRef.current = { ...EMPTY }
     setShowDash(false)
@@ -524,6 +535,12 @@ export default function App() {
     try {
       await upsertSnapshot({ month, ...totalsRef.current, reserve_total: value })
       setReserveTotal(value)
+      logActivity(month, {
+        type: ACTIVITY_TYPES.RESERVE_UPDATE,
+        description: value != null ? `Reserva atualizada para ${BRL_FMT(value)}` : 'Saldo da reserva removido',
+        details: { value },
+      })
+      setActivityKey(k => k + 1)
       showToast({ type: 'success', message: value != null ? 'Saldo da reserva atualizado.' : 'Saldo da reserva removido.' })
     } catch {
       showToast({ type: 'error', message: 'Erro ao salvar saldo da reserva.' })
@@ -535,6 +552,12 @@ export default function App() {
     try {
       await upsertSnapshot({ month, ...totalsRef.current, reserve_transferred: value })
       setReserveTransferred(value)
+      logActivity(month, {
+        type: ACTIVITY_TYPES.RESERVE_TRANSFER,
+        description: value != null ? `Transferência da reserva: ${BRL_FMT(value)}` : 'Transferência da reserva removida',
+        details: { value },
+      })
+      setActivityKey(k => k + 1)
       showToast({ type: 'success', message: value != null ? 'Transferência da reserva atualizada.' : 'Transferência removida.' })
     } catch {
       showToast({ type: 'error', message: 'Erro ao salvar transferência.' })
@@ -547,6 +570,12 @@ export default function App() {
       await upsertSnapshot({ month, ...totalsRef.current, real_balance: value })
       setRealBalance(value)
       setRealBalanceUpdatedAt(value != null ? new Date().toISOString() : null)
+      logActivity(month, {
+        type: ACTIVITY_TYPES.BALANCE_UPDATE,
+        description: value != null ? `Saldo real atualizado para ${BRL_FMT(value)}` : 'Saldo real removido',
+        details: { value },
+      })
+      setActivityKey(k => k + 1)
       showToast({ type: 'success', message: value != null ? 'Saldo real atualizado.' : 'Saldo real removido.' })
     } catch {
       showToast({ type: 'error', message: 'Erro ao salvar saldo real.' })
@@ -786,6 +815,42 @@ export default function App() {
                 onTotalsChanged={handleTransactionTotals}
                 onDetailedTotals={setTxDetailTotals}
                 categories={userCategories}
+                onStatusChange={(desc, statusLabel) => {
+                  logActivity(selectedMonth, {
+                    type: ACTIVITY_TYPES.STATUS_CHANGE,
+                    description: `"${desc}" → ${statusLabel}`,
+                    details: { from: null, to: statusLabel },
+                  })
+                  setActivityKey(k => k + 1)
+                }}
+              />
+            )}
+
+            {/* Histórico de ações */}
+            <ActivityLog month={selectedMonth} refreshKey={activityKey} />
+
+            {/* Resumo mensal */}
+            {showDash && allSnapshots.length >= 2 && (
+              <MonthlySummary
+                currentMonth={selectedMonth}
+                snapshots={allSnapshots}
+                totals={totals}
+                realBalance={realBalance}
+                reserveTotal={reserveTotal}
+              />
+            )}
+
+            {/* Metas financeiras */}
+            {showDash && (
+              <FinancialGoals
+                month={selectedMonth}
+                totals={totals}
+                realBalance={realBalance}
+                reserveTotal={reserveTotal}
+                onActivity={(desc) => {
+                  logActivity(selectedMonth, { type: ACTIVITY_TYPES.GOAL_UPDATE, description: desc })
+                  setActivityKey(k => k + 1)
+                }}
               />
             )}
 
