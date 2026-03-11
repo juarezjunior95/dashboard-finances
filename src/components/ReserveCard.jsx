@@ -27,14 +27,20 @@ export default function ReserveCard({ forecast }) {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50/50 dark:bg-violet-950/50 p-3">
-          <p className="text-[10px] font-semibold text-violet-500 dark:text-violet-400 uppercase">Reserva Atual</p>
+          <p className="text-[10px] font-semibold text-violet-500 dark:text-violet-400 uppercase">Reserva Total</p>
           <p className="text-sm font-bold text-violet-600 dark:text-violet-400">{BRL(forecast.reserveTotal)}</p>
-          <p className="text-[10px] text-gray-400 dark:text-gray-500">
-            {forecast.monthsOfRunway > 0 ? `${forecast.monthsOfRunway} mes${forecast.monthsOfRunway !== 1 ? 'es' : ''} de cobertura` : '—'}
-          </p>
+          <p className="text-[10px] text-gray-400 dark:text-gray-500">Saldo original</p>
         </div>
+
+        {forecast.reserveTransferred > 0 && (
+          <div className="rounded-xl border border-rose-200 dark:border-rose-800 bg-rose-50/50 dark:bg-rose-950/50 p-3">
+            <p className="text-[10px] font-semibold text-rose-500 dark:text-rose-400 uppercase">Já Transferido</p>
+            <p className="text-sm font-bold text-rose-600 dark:text-rose-400">{BRL(forecast.reserveTransferred)}</p>
+            <p className="text-[10px] text-gray-400 dark:text-gray-500">Saiu da reserva</p>
+          </div>
+        )}
 
         <div className={`rounded-xl border p-3 ${
           forecast.needsReserve
@@ -43,22 +49,22 @@ export default function ReserveCard({ forecast }) {
         }`}>
           <p className={`text-[10px] font-semibold uppercase ${
             forecast.needsReserve ? 'text-amber-500 dark:text-amber-400' : 'text-emerald-500 dark:text-emerald-400'
-          }`}>Usar da Reserva</p>
+          }`}>{forecast.needsReserve ? 'Ainda Precisa' : 'Reserva OK'}</p>
           <p className={`text-sm font-bold ${
             forecast.needsReserve ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'
           }`}>
             {forecast.needsReserve ? BRL(forecast.reserveNeeded) : 'Nenhum'}
           </p>
           <p className="text-[10px] text-gray-400 dark:text-gray-500">
-            {forecast.needsReserve ? 'Transferir para a conta' : 'Receita cobre tudo'}
+            {forecast.needsReserve ? 'Transferir a mais' : 'Caixa cobre tudo'}
           </p>
         </div>
 
         <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3">
-          <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase">Após Uso</p>
+          <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase">Saldo Reserva</p>
           <p className="text-sm font-bold text-gray-700 dark:text-gray-300">{BRL(forecast.reserveAfterUsage)}</p>
           <p className="text-[10px] text-gray-400 dark:text-gray-500">
-            {forecast.needsReserve ? 'Saldo restante' : 'Intacta'}
+            {forecast.monthsOfRunway > 0 ? `${forecast.monthsOfRunway} mes${forecast.monthsOfRunway !== 1 ? 'es' : ''}` : '—'}
           </p>
         </div>
       </div>

@@ -1,49 +1,42 @@
 /**
  * Cálculos do fundo de reserva.
  *
- * Alinhado com o CashFlowCard:
- *   caixaDisponivel = saldoReal + receita
- *   totalAPagar = despesas totais - já pago (+ amortização inclusa)
- *   reserveNeeded = max(0, totalAPagar - caixaDisponivel)
+ * reserveAfterUse = reserveTotal - reserveTransferred (estável, manual)
+ * reserveNeeded = max(0, remainingToPay - availableCash) (pode mudar com status)
  *
- * Runway usa receita recorrente (extra não é garantida no futuro).
+ * reserveTransferred é o valor que o usuário JÁ transferiu da reserva
+ * para a conta. Só muda quando o usuário informa explicitamente.
  */
 
 const BRL = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-/**
- * @param {number} params.caixaDisponivel - Saldo real + receitas esperadas
- * @param {number} params.totalAPagar - Total de despesas ainda pendentes
- * @param {number} params.recurringIncome - Receita recorrente (para runway)
- * @param {number} params.essentialExpenses - Despesas essenciais reais (fixas + cartão)
- * @param {number} params.reserveTotal - Saldo total do fundo de reserva
- */
 export function calculateReserveForecast({
-  caixaDisponivel = 0,
-  totalAPagar = 0,
+  availableCash = 0,
+  remainingToPay = 0,
   recurringIncome = 0,
   essentialExpenses = 0,
   reserveTotal = 0,
+  reserveTransferred = 0,
 }) {
   const r = (v) => Math.round(v * 100) / 100
+  const transferred = reserveTransferred || 0
 
-  // Quanto precisa tirar da reserva
-  const reserveNeeded = r(Math.max(0, totalAPagar - caixaDisponivel))
+  // Necessidade adicional (além do que já foi transferido)
+  const reserveNeeded = r(Math.max(0, remainingToPay - availableCash))
 
-  // Saldo após uso
-  const reserveAfterUsage = r(Math.max(0, reserveTotal - reserveNeeded))
+  // Reserva após uso = total - o que já saiu (estável)
+  const reserveAfterUsage = r(Math.max(0, reserveTotal - transferred))
 
   // Runway — baseado em despesas essenciais vs receita recorrente
   const monthlyGap = Math.max(0, essentialExpenses - recurringIncome)
   let monthsOfRunway
   if (monthlyGap <= 0) {
     const base = essentialExpenses > 0 ? essentialExpenses : recurringIncome || 1
-    monthsOfRunway = Math.round((reserveTotal / base) * 10) / 10
+    monthsOfRunway = Math.round((reserveAfterUsage / base) * 10) / 10
   } else {
-    monthsOfRunway = Math.round((reserveTotal / monthlyGap) * 10) / 10
+    monthsOfRunway = Math.round((reserveAfterUsage / monthlyGap) * 10) / 10
   }
 
-  // Saúde
   let reserveHealth = 'none'
   if (reserveTotal <= 0) reserveHealth = 'none'
   else if (monthsOfRunway >= 6) reserveHealth = 'excellent'
@@ -51,12 +44,15 @@ export function calculateReserveForecast({
   else if (monthsOfRunway >= 1) reserveHealth = 'warning'
   else reserveHealth = 'critical'
 
-  // Mensagem
   let message = ''
   if (reserveTotal <= 0) {
     message = 'Informe o saldo da sua reserva.'
+  } else if (transferred > 0 && reserveNeeded <= 0) {
+    message = `Já transferiu ${BRL(transferred)} da reserva. Caixa cobre o restante.`
   } else if (reserveNeeded <= 0) {
     message = `Reserva intacta com ${BRL(reserveTotal)}.`
+  } else if (transferred > 0) {
+    message = `Já transferiu ${BRL(transferred)}. Ainda precisa de mais ${BRL(reserveNeeded)}.`
   } else if (reserveNeeded <= reserveTotal) {
     message = `Transfira ${BRL(reserveNeeded)} da reserva para cobrir o mês.`
   } else {
@@ -67,6 +63,7 @@ export function calculateReserveForecast({
     reserveNeeded,
     reserveAfterUsage,
     reserveTotal,
+    reserveTransferred: transferred,
     monthsOfRunway,
     reserveHealth,
     needsReserve: reserveNeeded > 0,

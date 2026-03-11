@@ -117,10 +117,10 @@ function InlineBalanceField({ icon, label, hint, value, updatedAt, onSave, onCle
   )
 }
 
-export default function BalanceInput({ value, updatedAt, onSave, reserveTotal, onSaveReserve }) {
+export default function BalanceInput({ value, updatedAt, onSave, reserveTotal, onSaveReserve, reserveTransferred, onSaveReserveTransferred }) {
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-5">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
         <InlineBalanceField
           icon="🏦"
           label="Saldo da conta"
@@ -134,12 +134,22 @@ export default function BalanceInput({ value, updatedAt, onSave, reserveTotal, o
         <InlineBalanceField
           icon="🛡️"
           label="Fundo de reserva"
-          hint="Informar reserva"
+          hint="Informar reserva total"
           value={reserveTotal}
           updatedAt={null}
           onSave={(v) => onSaveReserve(v)}
           onClear={() => onSaveReserve(null)}
           accentColor="violet"
+        />
+        <InlineBalanceField
+          icon="💸"
+          label="Transferido da reserva"
+          hint="Quanto já usou da reserva"
+          value={reserveTransferred}
+          updatedAt={null}
+          onSave={(v) => onSaveReserveTransferred(v)}
+          onClear={() => onSaveReserveTransferred(null)}
+          accentColor="rose"
         />
       </div>
     </div>

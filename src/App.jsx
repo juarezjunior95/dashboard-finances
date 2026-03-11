@@ -116,6 +116,7 @@ export default function App() {
   const [realBalanceUpdatedAt, setRealBalanceUpdatedAt] = useState(null)
   const [currentSnapshot, setCurrentSnapshot] = useState(null)
   const [reserveTotal, setReserveTotal] = useState(null)
+  const [reserveTransferred, setReserveTransferred] = useState(null)
   const [pendingIncome, setPendingIncome] = useState(0)
   const [indicators, setIndicators] = useState(null)
 
@@ -176,10 +177,12 @@ export default function App() {
         setRealBalance(snap.real_balance != null ? Number(snap.real_balance) : null)
         setRealBalanceUpdatedAt(snap.real_balance_updated_at || null)
         setReserveTotal(snap.reserve_total != null ? Number(snap.reserve_total) : null)
+        setReserveTransferred(snap.reserve_transferred != null ? Number(snap.reserve_transferred) : null)
       } else {
         setRealBalance(null)
         setRealBalanceUpdatedAt(null)
         setReserveTotal(null)
+        setReserveTransferred(null)
       }
 
       if (snap) {
@@ -254,6 +257,7 @@ export default function App() {
       setRealBalanceUpdatedAt(null)
       setCurrentSnapshot(null)
       setReserveTotal(null)
+      setReserveTransferred(null)
       setPendingIncome(0)
       showToast({ type: 'error', message: 'Erro ao carregar dados do mês.' })
     } finally {
@@ -488,28 +492,32 @@ export default function App() {
   const reserveForecast = useMemo(() => {
     if (reserveTotal == null || reserveTotal <= 0) return null
 
-    const saldoReal = realBalance || 0
-    const receita = totals.receita || 0
+    const balanceAccount = realBalance || 0
+    const expectedIncome = totals.receita || 0
+    const transferred = reserveTransferred || 0
     const totalExp = (totals.fixas || 0) + (totals.cartao || 0) + (totals.invest || 0)
-    const caixaDisponivel = saldoReal + receita
-    const recurringInc = incomeBreakdown?.hasBreakdown ? incomeBreakdown.recurring : receita
+    const recurringInc = incomeBreakdown?.hasBreakdown ? incomeBreakdown.recurring : expectedIncome
     const essentialExp = (totals.fixas || 0) + (totals.cartao || 0)
 
-    // "Ainda a pagar" = pendente + sem status (já pago sai do cálculo)
+    // availableCash includes what was already transferred from reserve
+    const availableCash = balanceAccount + expectedIncome + transferred
+
+    // remainingToPay = pendente + sem status
     const jaPago = expenseStatus?.paid || 0
     const pendente = expenseStatus?.pending || 0
     const hasPaidData = jaPago > 0 || pendente > 0
     const semStatus = Math.max(0, totalExp - jaPago - pendente)
-    const aindaAPagar = hasPaidData ? (pendente + semStatus) : totalExp
+    const remainingToPay = hasPaidData ? (pendente + semStatus) : totalExp
 
     return calculateReserveForecast({
-      caixaDisponivel,
-      totalAPagar: aindaAPagar,
+      availableCash,
+      remainingToPay,
       recurringIncome: recurringInc,
       essentialExpenses: essentialExp,
       reserveTotal,
+      reserveTransferred: transferred,
     })
-  }, [reserveTotal, realBalance, totals, expenseStatus, incomeBreakdown])
+  }, [reserveTotal, reserveTransferred, realBalance, totals, expenseStatus, incomeBreakdown])
 
   const handleSaveReserveTotal = useCallback(async (value) => {
     const month = selectedMonthRef.current
@@ -519,6 +527,17 @@ export default function App() {
       showToast({ type: 'success', message: value != null ? 'Saldo da reserva atualizado.' : 'Saldo da reserva removido.' })
     } catch {
       showToast({ type: 'error', message: 'Erro ao salvar saldo da reserva.' })
+    }
+  }, [showToast])
+
+  const handleSaveReserveTransferred = useCallback(async (value) => {
+    const month = selectedMonthRef.current
+    try {
+      await upsertSnapshot({ month, ...totalsRef.current, reserve_transferred: value })
+      setReserveTransferred(value)
+      showToast({ type: 'success', message: value != null ? 'Transferência da reserva atualizada.' : 'Transferência removida.' })
+    } catch {
+      showToast({ type: 'error', message: 'Erro ao salvar transferência.' })
     }
   }, [showToast])
 
@@ -699,6 +718,8 @@ export default function App() {
                 onSave={handleSaveRealBalance}
                 reserveTotal={reserveTotal}
                 onSaveReserve={handleSaveReserveTotal}
+                reserveTransferred={reserveTransferred}
+                onSaveReserveTransferred={handleSaveReserveTransferred}
               />
             )}
 
@@ -710,6 +731,7 @@ export default function App() {
                 totalExpenses={(totals.fixas || 0) + (totals.cartao || 0) + (totals.invest || 0)}
                 expenseStatus={expenseStatus}
                 reserveTotal={reserveTotal}
+                reserveTransferred={reserveTransferred}
               />
             )}
 
