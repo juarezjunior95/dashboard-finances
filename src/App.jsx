@@ -39,7 +39,9 @@ import { useToast } from './contexts/ToastContext'
 import ActivityLog from './components/ActivityLog'
 import MonthlySummary from './components/MonthlySummary'
 import FinancialGoals from './components/FinancialGoals'
+import AiSummary from './components/AiSummary'
 import { logActivity, ACTIVITY_TYPES } from './services/activityLogService'
+import { listGoals } from './services/goalsService'
 
 const LEGACY_KEY = 'dashboard-financas-totals'
 const EMPTY = { receita: 0, fixas: 0, cartao: 0, invest: 0 }
@@ -124,6 +126,7 @@ export default function App() {
   const [pendingIncome, setPendingIncome] = useState(0)
   const [indicators, setIndicators] = useState(null)
   const [activityKey, setActivityKey] = useState(0)
+  const [userGoals, setUserGoals] = useState([])
 
   const totalsRef = useRef(totals)
   const statusTimer = useRef(null)
@@ -333,6 +336,7 @@ export default function App() {
     
     // Buscar indicadores econômicos (não bloqueia o carregamento)
     fetchIndicators().then(setIndicators).catch(() => setIndicators(null))
+    listGoals().then(g => setUserGoals(g.filter(x => x.active !== false))).catch(() => {})
     
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, selectedMonth])
@@ -662,6 +666,19 @@ export default function App() {
               />
             )}
 
+            {/* Resumo IA */}
+            {showDash && (
+              <AiSummary
+                month={selectedMonth}
+                totals={totals}
+                prevTotals={prevTotals}
+                realBalance={realBalance}
+                reserveTotal={reserveTotal}
+                reserveForecast={reserveForecast}
+                goals={userGoals}
+              />
+            )}
+
             {/* Import + Manual inputs */}
             <div id="input-section" className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
               {/* File Importer */}
@@ -850,6 +867,7 @@ export default function App() {
                 onActivity={(desc) => {
                   logActivity(selectedMonth, { type: ACTIVITY_TYPES.GOAL_UPDATE, description: desc })
                   setActivityKey(k => k + 1)
+                  listGoals().then(g => setUserGoals(g.filter(x => x.active !== false))).catch(() => {})
                 }}
               />
             )}
