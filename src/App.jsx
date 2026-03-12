@@ -5,13 +5,13 @@ import Dashboard from './components/Dashboard'
 import DarkToggle from './components/DarkToggle'
 import Login from './components/Login'
 import MonthSelector from './components/MonthSelector'
-import InvestmentPlanner from './components/InvestmentPlanner'
+// InvestmentPlanner unified into FinancialGoals
 import MonthlyTrend from './components/MonthlyTrend'
 import BudgetProgress from './components/BudgetProgress'
 import TransactionList from './components/TransactionList'
 import ConfirmModal from './components/ConfirmModal'
 import Welcome from './components/Welcome'
-import { SkeletonDashboardPage, SkeletonBudgetProgress, SkeletonInvestmentPlanner } from './components/Skeleton'
+import { SkeletonDashboardPage } from './components/Skeleton'
 import { useDarkMode } from './hooks/useDarkMode'
 import { useAuth } from './contexts/AuthContext'
 import { getSnapshot, upsertSnapshot, listMonths, listAllSnapshots, getEffectiveIncome, deleteSnapshot } from './services/snapshotService'
@@ -857,13 +857,15 @@ export default function App() {
               />
             )}
 
-            {/* Metas financeiras */}
+            {/* Metas e Planejamento (unificado) */}
             {showDash && (
               <FinancialGoals
                 month={selectedMonth}
                 totals={totals}
                 realBalance={realBalance}
                 reserveTotal={reserveTotal}
+                dark={dark}
+                onPlanCalculated={setInvestPlan}
                 onActivity={(desc) => {
                   logActivity(selectedMonth, { type: ACTIVITY_TYPES.GOAL_UPDATE, description: desc })
                   setActivityKey(k => k + 1)
@@ -883,8 +885,7 @@ export default function App() {
               onCategoriesChanged={handleCategoriesChanged}
             />
 
-            {/* Planejamento de Investimentos */}
-            <InvestmentPlanner dark={dark} onPlanCalculated={setInvestPlan} />
+            {/* InvestmentPlanner removido — unificado em FinancialGoals acima */}
           </>
         )}
       </main>
