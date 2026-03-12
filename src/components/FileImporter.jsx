@@ -4,6 +4,8 @@ import * as XLSX from 'xlsx'
 import { toNumberBR } from '../utils/toNumberBR'
 import { bulkInsertTransactions, listTransactions, clearTransactions } from '../services/transactionService'
 import { listCategories } from '../services/categoryService'
+import { categorizeBatch } from '../services/aiCategorizationService'
+import { isAiAvailable } from '../services/aiService'
 
 const ACCEPTED = '.csv,.xlsx,.xls,.xml'
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10 MB
@@ -254,14 +256,17 @@ function getParser(fileName) {
 
 // ── Mapping panel for unrecognized categories ───────────
 
-function MappingPanel({ unmapped, allCategories, onApply, onCancel }) {
+function MappingPanel({ unmapped, allCategories, onApply, onCancel, aiSuggestions }) {
   const [mapping, setMapping] = useState(() => {
     const m = {}
-    for (const key of Object.keys(unmapped)) m[key] = ''
+    for (const key of Object.keys(unmapped)) {
+      m[key] = aiSuggestions?.[key] || ''
+    }
     return m
   })
 
   const allReady = Object.values(mapping).every(v => v !== '')
+  const hasAiSuggestions = aiSuggestions && Object.values(aiSuggestions).some(v => v)
 
   return (
     <div className="mt-3 space-y-3 p-3 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950">
@@ -270,15 +275,25 @@ function MappingPanel({ unmapped, allCategories, onApply, onCancel }) {
         <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
           Categorias não reconhecidas
         </p>
+        {hasAiSuggestions && (
+          <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/50 text-violet-600 dark:text-violet-400">
+            ✨ IA sugeriu
+          </span>
+        )}
       </div>
       <p className="text-[11px] text-amber-700 dark:text-amber-400">
-        Mapeie cada categoria para uma existente antes de importar:
+        {hasAiSuggestions
+          ? 'A IA sugeriu categorias. Confira e ajuste se necessário:'
+          : 'Mapeie cada categoria para uma existente antes de importar:'}
       </p>
       <div className="space-y-2">
         {Object.entries(unmapped).map(([key, info]) => (
           <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
             <span className="text-xs text-gray-700 dark:text-gray-300 font-medium min-w-[120px]">
               &quot;{info.original}&quot; <span className="text-gray-400">({info.count}x)</span>
+              {aiSuggestions?.[key] && mapping[key] === aiSuggestions[key] && (
+                <span className="text-[9px] text-violet-500 ml-1">✨</span>
+              )}
             </span>
             <svg className="hidden sm:block w-3 h-3 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
@@ -321,6 +336,7 @@ export default function FileImporter({ onTotals, month }) {
   const [pendingRows, setPendingRows] = useState(null)
   const [pendingFile, setPendingFile] = useState(null)
   const [importModal, setImportModal] = useState(null)
+  const [aiSuggestions, setAiSuggestions] = useState(null)
   const importModeRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -413,6 +429,28 @@ export default function FileImporter({ onTotals, month }) {
           setPendingRows(rows)
           setPendingUnmapped(unmapped)
           setPendingFile(file.name)
+
+          if (isAiAvailable()) {
+            try {
+              const descriptions = unmappedKeys.map(k => unmapped[k].original)
+              const aiResult = await categorizeBatch(descriptions)
+              const suggestions = {}
+              for (const key of unmappedKeys) {
+                const orig = unmapped[key].original
+                const validCats = userCategories.map(c => c.key)
+                const parentMap = {}
+                for (const c of userCategories) parentMap[c.parent_category] = c.key
+                const suggested = aiResult[orig]
+                if (suggested && (validCats.includes(suggested) || parentMap[suggested])) {
+                  suggestions[key] = validCats.includes(suggested) ? suggested : parentMap[suggested]
+                }
+              }
+              setAiSuggestions(Object.keys(suggestions).length > 0 ? suggestions : null)
+            } catch {
+              setAiSuggestions(null)
+            }
+          }
+
           setStatus('idle')
           return
         }
@@ -535,7 +573,8 @@ export default function FileImporter({ onTotals, month }) {
           unmapped={pendingUnmapped}
           allCategories={userCategories}
           onApply={handleApplyMapping}
-          onCancel={() => { setPendingUnmapped(null); setPendingRows(null); setPendingFile(null) }}
+          onCancel={() => { setPendingUnmapped(null); setPendingRows(null); setPendingFile(null); setAiSuggestions(null) }}
+          aiSuggestions={aiSuggestions}
         />
       )}
 

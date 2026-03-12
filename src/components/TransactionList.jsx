@@ -11,6 +11,7 @@ import {
 import { useToast } from '../contexts/ToastContext'
 import { COLOR_MAP } from '../services/categoryService'
 import ConfirmModal from './ConfirmModal'
+import AiTransactionInput from './AiTransactionInput'
 
 const FALLBACK_CATEGORIES = [
   { key: 'fixas', label: 'Contas Fixas', color: 'rose', parent_category: 'fixas' },
@@ -250,6 +251,17 @@ export default function TransactionList({ month, onTotalsChanged, onDetailedTota
     }
   }, [month, load, recalcAndNotify, showToast])
 
+  const handleAiConfirm = useCallback(async (parsed) => {
+    try {
+      await upsertTransaction({ month, ...parsed, source: 'ai' })
+      await load()
+      await recalcAndNotify()
+      showToast({ type: 'success', message: `Transação "${parsed.description}" adicionada via IA.` })
+    } catch {
+      showToast({ type: 'error', message: 'Erro ao salvar transação via IA.' })
+    }
+  }, [month, load, recalcAndNotify, showToast])
+
   const handleSaveEdit = useCallback(async (formData) => {
     setSaving(true)
     try {
@@ -386,6 +398,9 @@ export default function TransactionList({ month, onTotalsChanged, onDetailedTota
               allCategories={allCats}
             />
           )}
+
+          {/* AI Natural Language Input */}
+          <AiTransactionInput onConfirm={handleAiConfirm} />
 
           {/* Filters */}
           {transactions.length > 0 && (
