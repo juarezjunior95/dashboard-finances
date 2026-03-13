@@ -131,6 +131,7 @@ export default function App() {
   const totalsRef = useRef(totals)
   const statusTimer = useRef(null)
   const selectedMonthRef = useRef(selectedMonth)
+  const previousUserIdRef = useRef(null)
 
   useEffect(() => { totalsRef.current = totals }, [totals])
   useEffect(() => { selectedMonthRef.current = selectedMonth }, [selectedMonth])
@@ -327,7 +328,35 @@ export default function App() {
   // ── Initial load ──
 
   useEffect(() => {
-    if (!user) return
+    if (!user) {
+      previousUserIdRef.current = null
+      return
+    }
+    // Troca de usuário: limpar estado do dashboard para não exibir dados do usuário anterior
+    if (previousUserIdRef.current !== user.id) {
+      previousUserIdRef.current = user.id
+      setTotals({ ...EMPTY })
+      totalsRef.current = { ...EMPTY }
+      setPrevTotals(null)
+      setAvailableMonths([])
+      setShowDash(false)
+      setBudgetAlerts({})
+      setUserCategories(null)
+      setTxDetailTotals(null)
+      setAllSnapshots([])
+      setInvestPlan(null)
+      setTxCount(0)
+      setIncomeBreakdown(null)
+      setExpenseStatus(null)
+      setRealBalance(null)
+      setRealBalanceUpdatedAt(null)
+      setCurrentSnapshot(null)
+      setReserveTotal(null)
+      setReserveTransferred(null)
+      setPendingIncome(0)
+      setIndicators(null)
+      setUserGoals([])
+    }
     refreshMonths()
     loadMonth(selectedMonth)
     loadCategories()
