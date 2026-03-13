@@ -356,7 +356,7 @@ function GoalCard({ goal, onEdit, onDelete, onQuickUpdate, dark }) {
   )
 }
 
-export default function FinancialGoals({ month, totals, realBalance, reserveTotal, onActivity, dark, onPlanCalculated }) {
+export default function FinancialGoals({ onActivity, dark, onPlanCalculated }) {
   const { showToast } = useToast()
   const [goals, setGoals] = useState([])
   const [loading, setLoading] = useState(true)

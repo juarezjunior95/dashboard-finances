@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import { clearUserData } from '../lib/clearUserData'
 
 const AuthContext = createContext(null)
 
@@ -41,6 +42,7 @@ export function AuthProvider({ children }) {
   }
 
   async function signOut() {
+    clearUserData()
     const { error } = await supabase.auth.signOut()
     if (error) throw error
   }
@@ -50,6 +52,7 @@ export function AuthProvider({ children }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
+/* eslint-disable react-refresh/only-export-components */
 export function useAuth() {
   const ctx = useContext(AuthContext)
   if (!ctx) throw new Error('useAuth deve ser usado dentro de <AuthProvider>')

@@ -246,24 +246,20 @@ export async function deleteCategory(id) {
     return
   }
 
-  try {
-    if (cat) {
-      await supabase
-        .from('transactions')
-        .update({ category: cat.parent_category })
-        .eq('user_id', user.id)
-        .eq('category', cat.key)
-    }
-
-    const { error } = await supabase
-      .from('user_categories')
-      .delete()
-      .eq('id', id)
+  if (cat) {
+    await supabase
+      .from('transactions')
+      .update({ category: cat.parent_category })
       .eq('user_id', user.id)
-    if (error) throw error
-  } catch (err) {
-    throw err
+      .eq('category', cat.key)
   }
+
+  const { error } = await supabase
+    .from('user_categories')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', user.id)
+  if (error) throw error
 
   setStore(stored.filter(c => c.id !== id))
 }

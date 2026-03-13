@@ -14,7 +14,7 @@ import Welcome from './components/Welcome'
 import { SkeletonDashboardPage } from './components/Skeleton'
 import { useDarkMode } from './hooks/useDarkMode'
 import { useAuth } from './contexts/AuthContext'
-import { getSnapshot, upsertSnapshot, listMonths, listAllSnapshots, getEffectiveIncome, deleteSnapshot } from './services/snapshotService'
+import { getSnapshot, upsertSnapshot, listMonths, listAllSnapshots, deleteSnapshot } from './services/snapshotService'
 import { listCategories } from './services/categoryService'
 import {
   getTransactionTotals,
@@ -45,6 +45,12 @@ import { listGoals } from './services/goalsService'
 
 const LEGACY_KEY = 'dashboard-financas-totals'
 const EMPTY = { receita: 0, fixas: 0, cartao: 0, invest: 0 }
+const ADJ_LABELS = {
+  receita: 'Receita (entrada manual)',
+  fixas: 'Contas fixas (ajuste manual)',
+  cartao: 'Cartão (ajuste manual)',
+  invest: 'Investimentos (ajuste manual)',
+}
 
 const BRL_FMT = (v) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -120,10 +126,10 @@ export default function App() {
   const [expenseStatus, setExpenseStatus] = useState(null)
   const [realBalance, setRealBalance] = useState(null)
   const [realBalanceUpdatedAt, setRealBalanceUpdatedAt] = useState(null)
-  const [currentSnapshot, setCurrentSnapshot] = useState(null)
+  const [, setCurrentSnapshot] = useState(null)
   const [reserveTotal, setReserveTotal] = useState(null)
   const [reserveTransferred, setReserveTransferred] = useState(null)
-  const [pendingIncome, setPendingIncome] = useState(0)
+  const [, setPendingIncome] = useState(0)
   const [indicators, setIndicators] = useState(null)
   const [activityKey, setActivityKey] = useState(0)
   const [userGoals, setUserGoals] = useState([])
@@ -131,6 +137,7 @@ export default function App() {
   const totalsRef = useRef(totals)
   const statusTimer = useRef(null)
   const selectedMonthRef = useRef(selectedMonth)
+  const previousUserIdRef = useRef(null)
 
   useEffect(() => { totalsRef.current = totals }, [totals])
   useEffect(() => { selectedMonthRef.current = selectedMonth }, [selectedMonth])
@@ -327,7 +334,35 @@ export default function App() {
   // ── Initial load ──
 
   useEffect(() => {
-    if (!user) return
+    if (!user) {
+      previousUserIdRef.current = null
+      return
+    }
+    // Troca de usuário: limpar estado do dashboard para não exibir dados do usuário anterior
+    if (previousUserIdRef.current !== user.id) {
+      previousUserIdRef.current = user.id
+      setTotals({ ...EMPTY })
+      totalsRef.current = { ...EMPTY }
+      setPrevTotals(null)
+      setAvailableMonths([])
+      setShowDash(false)
+      setBudgetAlerts({})
+      setUserCategories(null)
+      setTxDetailTotals(null)
+      setAllSnapshots([])
+      setInvestPlan(null)
+      setTxCount(0)
+      setIncomeBreakdown(null)
+      setExpenseStatus(null)
+      setRealBalance(null)
+      setRealBalanceUpdatedAt(null)
+      setCurrentSnapshot(null)
+      setReserveTotal(null)
+      setReserveTransferred(null)
+      setPendingIncome(0)
+      setIndicators(null)
+      setUserGoals([])
+    }
     refreshMonths()
     loadMonth(selectedMonth)
     loadCategories()
@@ -377,13 +412,6 @@ export default function App() {
       totalsRef.current = next
       return next
     })
-  }
-
-  const ADJ_LABELS = {
-    receita: 'Receita (entrada manual)',
-    fixas: 'Contas fixas (ajuste manual)',
-    cartao: 'Cartão (ajuste manual)',
-    invest: 'Investimentos (ajuste manual)',
   }
 
   const handleApplyManual = useCallback(async () => {

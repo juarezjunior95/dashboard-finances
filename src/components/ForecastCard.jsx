@@ -30,17 +30,6 @@ const METHOD_LABELS = {
   linear_combined: 'Combinado: ritmo atual + histórico',
 }
 
-function getCategoryConfidence(method, dayOfMonth, historyCount) {
-  if (method.startsWith('lump_') && historyCount >= 3) return 'high'
-  if (method.startsWith('lump_') && historyCount >= 1) return 'medium'
-  if (method === 'receita_actual') return 'high'
-  if (method.startsWith('linear_') && dayOfMonth < 10) return 'low'
-  if (method.startsWith('linear_') && dayOfMonth < 20) return 'medium'
-  if (method.startsWith('linear_') && dayOfMonth >= 20) return 'high'
-  if (method.includes('no_history')) return 'low'
-  return 'medium'
-}
-
 // História 3: determinar status da categoria
 function getCategoryStatus(cat, proj, dayOfMonth, prevValue, avgHistorical) {
   const { current, projected, method } = proj
@@ -93,6 +82,19 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
     })
   }, [totals, isCurrentMonth, hasData, historicalSnapshots, currentMonth, incomeBreakdown])
 
+  const historicalAvg = useMemo(() => {
+    const validSnapshots = historicalSnapshots.filter(s => s.month !== currentMonth && s.month)
+    if (validSnapshots.length === 0) return {}
+    const avg = {}
+    for (const cat of ['fixas', 'cartao', 'invest']) {
+      const values = validSnapshots.map(s => Number(s[cat]) || 0).filter(v => v > 0)
+      if (values.length > 0) {
+        avg[cat] = Math.round((values.reduce((s, v) => s + v, 0) / values.length) * 100) / 100
+      }
+    }
+    return avg
+  }, [historicalSnapshots, currentMonth])
+
   if (!forecast) return null
 
   const {
@@ -107,22 +109,6 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
   const pctGasto = Math.min((currentExpenses / receita) * 100, 150)
   const pctProjetado = Math.min((totalExpensesProjected / receita) * 100, 150)
   const noReceita = receitaReal === 0
-  const historyCount = historicalSnapshots.filter(s => s.month !== currentMonth).length
-  
-  // Calcular médias históricas para cada categoria
-  const historicalAvg = useMemo(() => {
-    const validSnapshots = historicalSnapshots.filter(s => s.month !== currentMonth && s.month)
-    if (validSnapshots.length === 0) return {}
-    const avg = {}
-    for (const cat of ['fixas', 'cartao', 'invest']) {
-      const values = validSnapshots.map(s => Number(s[cat]) || 0).filter(v => v > 0)
-      if (values.length > 0) {
-        avg[cat] = Math.round((values.reduce((s, v) => s + v, 0) / values.length) * 100) / 100
-      }
-    }
-    return avg
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historicalSnapshots.length, currentMonth])
 
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-6 space-y-4">
