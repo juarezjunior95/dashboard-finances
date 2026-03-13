@@ -35,7 +35,7 @@ export function toNumberBR(raw) {
   }
 
   // Remove qualquer caractere restante que não seja número, ponto ou sinal
-  normalized = normalized.replace(/[^\d.\-]/g, '')
+  normalized = normalized.replace(/[^\d.-]/g, '')
 
   const result = parseFloat(normalized)
   return Number.isFinite(result) ? result : NaN

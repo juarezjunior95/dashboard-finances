@@ -123,7 +123,7 @@ export default function InvestmentTrendChart({ schedule, dark }) {
         grid: { display: false },
       },
     },
-  }), [schedule, dark, textColor, gridColor])
+  }), [schedule, textColor, gridColor])
 
   if (!schedule || schedule.length === 0) return null
 

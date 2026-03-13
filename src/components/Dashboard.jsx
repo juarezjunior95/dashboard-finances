@@ -15,8 +15,8 @@ import FinancialInsights from './FinancialInsights'
 
 ChartJS.register(ArcElement, CategoryScale, LinearScale, BarElement, Tooltip, Legend)
 
-// ── Utils ────────────────────────────────────────────────
-
+// ── Utils (exportados para uso em KpiCard e outros) ────────────────────────
+/* eslint-disable react-refresh/only-export-components */
 export function formatBRL(v) {
   return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
@@ -25,6 +25,7 @@ export function calcPercent(value, total) {
   if (!total) return '0.0'
   return ((value / total) * 100).toFixed(1)
 }
+/* eslint-enable react-refresh/only-export-components */
 
 // ── Constants ────────────────────────────────────────────
 
@@ -207,7 +208,7 @@ function KpiCard({ label, value, percent, color, dark, prevValue, invertColor, b
 
 export default function Dashboard({
   receita, fixas, cartao, invest, prevTotals, budgetAlerts = {}, dark, categories, transactionTotals,
-  incomeBreakdown, expenseStatus, realBalance, realBalanceUpdatedAt,
+  incomeBreakdown, expenseStatus,
 }) {
   const hasIncomeBreakdown = incomeBreakdown?.hasBreakdown === true
   const recurringIncome = hasIncomeBreakdown ? incomeBreakdown.recurring : receita
@@ -216,8 +217,6 @@ export default function Dashboard({
 
   const total = recurringIncome || receita || 1
   const saldoCalculado = receita - fixas - cartao - invest
-  const hasRealBalance = realBalance != null && realBalance > 0
-  const saldoExibido = hasRealBalance ? realBalance : saldoCalculado
   const saldoGrafico = Math.max(saldoCalculado, 0)
   const gastosExcedidos = saldoCalculado < 0
 
@@ -231,7 +230,7 @@ export default function Dashboard({
       receita: '100.0',
       saldo: calcPercent(saldoGrafico, total),
     }),
-    [receita, fixas, cartao, invest, total, saldoGrafico],
+    [fixas, cartao, invest, total, saldoGrafico],
   )
 
   const analysis = useMemo(
@@ -346,7 +345,7 @@ export default function Dashboard({
         },
       },
     }),
-    [dark, textColor, receita],
+    [textColor, receita],
   )
 
   const barData = useMemo(
@@ -405,7 +404,7 @@ export default function Dashboard({
         },
       },
     }),
-    [dark, textColor, gridColor, receita],
+    [textColor, gridColor, receita],
   )
 
   const deficitOrcamentario = receita - fixas - cartao - invest

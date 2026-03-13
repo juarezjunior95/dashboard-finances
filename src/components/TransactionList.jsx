@@ -213,7 +213,7 @@ export default function TransactionList({ month, onTotalsChanged, onDetailedTota
     } finally {
       setLoading(false)
     }
-  }, [month, showToast])
+  }, [month, showToast, expanded])
 
   useEffect(() => {
     load()
@@ -311,7 +311,7 @@ export default function TransactionList({ month, onTotalsChanged, onDetailedTota
     } catch {
       showToast({ type: 'error', message: 'Erro ao alterar status.' })
     }
-  }, [month, recalcAndNotify, showToast])
+  }, [month, recalcAndNotify, showToast, onStatusChange])
 
   const filtered = useMemo(() => {
     let items = transactions

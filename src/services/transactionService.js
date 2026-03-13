@@ -161,17 +161,13 @@ export async function deleteTransaction(id, month) {
     return
   }
 
-  try {
-    const { error } = await supabase
-      .from('transactions')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', user.id)
+  const { error } = await supabase
+    .from('transactions')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', user.id)
 
-    if (error) throw error
-  } catch (err) {
-    throw err
-  }
+  if (error) throw error
 
   const store = getStore()
   if (store[month]) {
@@ -250,17 +246,13 @@ export async function deleteTransactionsBySource(month, source) {
     return
   }
 
-  try {
-    const { error } = await supabase
-      .from('transactions')
-      .delete()
-      .eq('user_id', user.id)
-      .eq('month', month)
-      .eq('source', source)
-    if (error) throw error
-  } catch (err) {
-    throw err
-  }
+  const { error } = await supabase
+    .from('transactions')
+    .delete()
+    .eq('user_id', user.id)
+    .eq('month', month)
+    .eq('source', source)
+  if (error) throw error
 
   const store = getStore()
   if (store[month]) {
@@ -279,16 +271,12 @@ export async function clearTransactions(month) {
     return
   }
 
-  try {
-    const { error } = await supabase
-      .from('transactions')
-      .delete()
-      .eq('user_id', user.id)
-      .eq('month', month)
-    if (error) throw error
-  } catch (err) {
-    throw err
-  }
+  const { error } = await supabase
+    .from('transactions')
+    .delete()
+    .eq('user_id', user.id)
+    .eq('month', month)
+  if (error) throw error
 
   const store = getStore()
   store[month] = []

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { generateAlerts } from '../utils/generateAlerts'
 
@@ -72,11 +72,8 @@ export default function SmartAlerts({
   )
 
   const hasDanger = visibleAlerts.some(a => a.severity === 'danger')
-  const [expanded, setExpanded] = useState(hasDanger)
-
-  useEffect(() => {
-    if (hasDanger) setExpanded(true)
-  }, [hasDanger])
+  const [userCollapsed, setUserCollapsed] = useState(false)
+  const expanded = hasDanger || !userCollapsed
 
   const [exiting, setExiting] = useState({})
 
@@ -102,7 +99,7 @@ export default function SmartAlerts({
     <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
       {/* Header */}
       <button
-        onClick={() => setExpanded(e => !e)}
+        onClick={() => setUserCollapsed(c => !c)}
         className="w-full flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
       >
         <div className="flex items-center gap-2">

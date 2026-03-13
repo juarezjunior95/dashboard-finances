@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
 import { toNumberBR } from '../utils/toNumberBR'
@@ -6,9 +6,10 @@ import { bulkInsertTransactions, listTransactions, clearTransactions } from '../
 import { listCategories } from '../services/categoryService'
 import { categorizeBatch } from '../services/aiCategorizationService'
 import { isAiAvailable } from '../services/aiService'
+import { detectColumnMapping, guessFieldFromHeader, COLUMN_FIELDS, FIELD_STYLES } from '../services/aiColumnMapperService'
 
 const ACCEPTED = '.csv,.xlsx,.xls,.xml'
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10 MB
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 
 const BASE_CATEGORY_MAP = {
   fixa: 'fixas',
@@ -61,23 +62,11 @@ function normalizeCategoryWith(raw, catMap) {
 
 function findColumns(headers) {
   const lower = headers.map((h) => String(h).trim().toLowerCase())
-
-  const catIdx = lower.findIndex((h) =>
-    ['categoria', 'category', 'tipo', 'type'].includes(h),
-  )
-  const valIdx = lower.findIndex((h) =>
-    ['valor', 'value', 'amount', 'quantia', 'total'].includes(h),
-  )
-  const dateIdx = lower.findIndex((h) =>
-    ['data', 'date', 'dia', 'dt'].includes(h),
-  )
-  const descIdx = lower.findIndex((h) =>
-    ['descricao', 'descrição', 'description', 'desc', 'nome', 'name', 'historico', 'histórico'].includes(h),
-  )
-  const statusIdx = lower.findIndex((h) =>
-    ['status', 'situacao', 'situação', 'pago', 'estado'].includes(h),
-  )
-
+  const catIdx = lower.findIndex((h) => ['categoria', 'category', 'tipo', 'type'].includes(h))
+  const valIdx = lower.findIndex((h) => ['valor', 'value', 'amount', 'quantia', 'total'].includes(h))
+  const dateIdx = lower.findIndex((h) => ['data', 'date', 'dia', 'dt', 'pay day', 'payday', 'vencimento'].includes(h))
+  const descIdx = lower.findIndex((h) => ['descricao', 'descrição', 'description', 'desc', 'nome', 'name', 'historico', 'histórico'].includes(h))
+  const statusIdx = lower.findIndex((h) => ['status', 'situacao', 'situação', 'pago', 'estado'].includes(h))
   return { catIdx, valIdx, dateIdx, descIdx, statusIdx }
 }
 
@@ -101,20 +90,27 @@ function tryParseDate(raw) {
     const d2 = new Date(`${year}-${brMatch[2].padStart(2, '0')}-${brMatch[1].padStart(2, '0')}`)
     if (!isNaN(d2.getTime())) return d2.toISOString().split('T')[0]
   }
+  // Handle MM/DD or DD/MM only (no year) — assume current year
+  const shortMatch = s.match(/^(\d{1,2})[/\-.](\d{1,2})$/)
+  if (shortMatch) {
+    const year = new Date().getFullYear()
+    const d3 = new Date(`${year}-${shortMatch[2].padStart(2, '0')}-${shortMatch[1].padStart(2, '0')}`)
+    if (!isNaN(d3.getTime())) return d3.toISOString().split('T')[0]
+  }
   return null
 }
 
-function normalizeRows(rawRows, catMap) {
+function normalizeRows(rawRows, catMap, customIndices) {
   if (!rawRows.length) return { rows: [], unmapped: {} }
 
   const headers = rawRows[0]
-  const { catIdx, valIdx, dateIdx, descIdx, statusIdx } = findColumns(headers)
+  const { catIdx, valIdx, dateIdx, descIdx, statusIdx } = customIndices || findColumns(headers)
 
   if (catIdx === -1 || valIdx === -1) {
     throw new Error(
       `Colunas obrigatórias não encontradas. ` +
-        `Esperado: "categoria" (ou tipo/category) e "valor" (ou value/amount). ` +
-        `Encontrado: [${headers.join(', ')}]`,
+      `Esperado: "categoria" (ou tipo/category) e "valor" (ou value/amount). ` +
+      `Encontrado: [${headers.join(', ')}]`,
     )
   }
 
@@ -151,20 +147,6 @@ function normalizeRows(rawRows, catMap) {
   return { rows, unmapped }
 }
 
-function computeTotals(rows, userCategories) {
-  const totals = { fixas: 0, cartao: 0, invest: 0, receita: 0 }
-  const catLookup = new Map()
-  for (const c of userCategories) catLookup.set(c.key, c.parent_category)
-
-  for (const { categoria, valor } of rows) {
-    const parent = catLookup.get(categoria) || categoria
-    if (parent in totals) {
-      totals[parent] += valor
-    }
-  }
-  return totals
-}
-
 // ── Parsers ──────────────────────────────────────────────
 
 function parseCSV(file) {
@@ -172,15 +154,10 @@ function parseCSV(file) {
     Papa.parse(file, {
       skipEmptyLines: true,
       complete(results) {
-        if (results.errors.length) {
-          reject(new Error(`Erro ao ler CSV: ${results.errors[0].message}`))
-        } else {
-          resolve(results.data)
-        }
+        if (results.errors.length) reject(new Error(`Erro ao ler CSV: ${results.errors[0].message}`))
+        else resolve(results.data)
       },
-      error(err) {
-        reject(new Error(`Erro ao ler CSV: ${err.message}`))
-      },
+      error(err) { reject(new Error(`Erro ao ler CSV: ${err.message}`)) },
     })
   })
 }
@@ -194,9 +171,7 @@ function parseXLSX(file) {
         const sheet = wb.Sheets[wb.SheetNames[0]]
         const data = XLSX.utils.sheet_to_json(sheet, { header: 1 })
         resolve(data)
-      } catch (err) {
-        reject(new Error(`Erro ao ler XLSX: ${err.message}`))
-      }
+      } catch (err) { reject(new Error(`Erro ao ler XLSX: ${err.message}`)) }
     }
     reader.onerror = () => reject(new Error('Falha ao ler o arquivo XLSX.'))
     reader.readAsArrayBuffer(file)
@@ -210,36 +185,18 @@ function parseXML(file) {
       try {
         const parser = new DOMParser()
         const doc = parser.parseFromString(e.target.result, 'text/xml')
-
         const parseError = doc.querySelector('parsererror')
-        if (parseError) {
-          reject(new Error('XML mal-formado: ' + parseError.textContent.slice(0, 120)))
-          return
-        }
-
+        if (parseError) { reject(new Error('XML mal-formado: ' + parseError.textContent.slice(0, 120))); return }
         const items = doc.querySelectorAll('item, row, registro, lancamento')
-        if (!items.length) {
-          reject(
-            new Error(
-              'Nenhum elemento encontrado no XML. Esperado: <item>, <row>, <registro> ou <lancamento>.',
-            ),
-          )
-          return
-        }
-
+        if (!items.length) { reject(new Error('Nenhum elemento encontrado no XML. Esperado: <item>, <row>, <registro> ou <lancamento>.')); return }
         const rows = [['categoria', 'valor']]
         items.forEach((item) => {
-          const cat =
-            item.querySelector('categoria, category, tipo, type')?.textContent ?? ''
-          const val =
-            item.querySelector('valor, value, amount, quantia, total')?.textContent ?? ''
+          const cat = item.querySelector('categoria, category, tipo, type')?.textContent ?? ''
+          const val = item.querySelector('valor, value, amount, quantia, total')?.textContent ?? ''
           rows.push([cat, val])
         })
-
         resolve(rows)
-      } catch (err) {
-        reject(new Error(`Erro ao ler XML: ${err.message}`))
-      }
+      } catch (err) { reject(new Error(`Erro ao ler XML: ${err.message}`)) }
     }
     reader.onerror = () => reject(new Error('Falha ao ler o arquivo XML.'))
     reader.readAsText(file)
@@ -252,6 +209,212 @@ function getParser(fileName) {
   if (ext === 'xlsx' || ext === 'xls') return parseXLSX
   if (ext === 'xml') return parseXML
   return null
+}
+
+// ── Smart Column Mapping Step ────────────────────────────
+
+function ColumnMappingStep({ rawData, aiMappings, aiLoading, onConfirm, onCancel }) {
+  const headers = useMemo(() =>
+    rawData[0].map((h, i) => ({
+      index: i,
+      name: String(h ?? '').trim(),
+      display: String(h ?? '').trim() || `Coluna ${i + 1}`,
+    })),
+    [rawData],
+  )
+
+  const sampleRows = useMemo(() => rawData.slice(1, 4), [rawData])
+  const [userEdited, setUserEdited] = useState({})
+
+  const [mappings, setMappings] = useState(() => {
+    const m = {}
+    for (const h of headers) {
+      const heuristic = guessFieldFromHeader(h.name)
+      if (heuristic) {
+        m[h.index] = heuristic
+      } else if (!h.name) {
+        m[h.index] = 'ignore'
+      } else {
+        m[h.index] = 'ignore'
+      }
+    }
+    return m
+  })
+
+  // Update from AI when results arrive (only non-user-edited fields)
+  useEffect(() => {
+    if (!aiMappings) return
+    /* eslint-disable-next-line react-hooks/set-state-in-effect -- merge async AI suggestions into local state */
+    setMappings(prev => {
+      const m = { ...prev }
+      for (const ai of aiMappings) {
+        if (!userEdited[ai.col] && ai.confidence >= 0.5) {
+          m[ai.col] = ai.field
+        }
+      }
+      return m
+    })
+  }, [aiMappings, userEdited])
+
+  const handleChange = (colIdx, field) => {
+    setMappings(prev => ({ ...prev, [colIdx]: field }))
+    setUserEdited(prev => ({ ...prev, [colIdx]: true }))
+  }
+
+  const hasAmount = Object.values(mappings).includes('amount')
+  const hasCategory = Object.values(mappings).includes('category')
+  const isValid = hasAmount && hasCategory
+
+  const handleConfirm = () => {
+    const indices = { catIdx: -1, valIdx: -1, descIdx: -1, statusIdx: -1, dateIdx: -1 }
+    for (const [idx, field] of Object.entries(mappings)) {
+      const i = Number(idx)
+      if (field === 'category') indices.catIdx = i
+      if (field === 'amount') indices.valIdx = i
+      if (field === 'description') indices.descIdx = i
+      if (field === 'payment_status') indices.statusIdx = i
+      if (field === 'date') indices.dateIdx = i
+    }
+    onConfirm(indices)
+  }
+
+  const activeFields = Object.values(mappings).filter(f => f !== 'ignore')
+  const duplicates = activeFields.filter((f, i) => activeFields.indexOf(f) !== i)
+
+  return (
+    <div className="mt-3 space-y-4 p-4 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-gray-900">
+      {/* Header */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-base">🤖</span>
+        <h3 className="text-xs font-bold text-gray-700 dark:text-gray-200">Mapeamento de colunas</h3>
+        {aiLoading && (
+          <span className="text-[9px] font-medium px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/50 text-violet-600 dark:text-violet-400 animate-pulse">
+            IA analisando...
+          </span>
+        )}
+        {!aiLoading && aiMappings && (
+          <span className="text-[9px] font-medium px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/50 text-violet-600 dark:text-violet-400">
+            ✨ IA sugeriu
+          </span>
+        )}
+      </div>
+
+      <p className="text-[11px] text-gray-500 dark:text-gray-400">
+        Identifique o que cada coluna da planilha representa. <strong>Categoria</strong> e <strong>Valor</strong> são obrigatórios.
+      </p>
+
+      {/* Column mapping cards */}
+      <div className="space-y-2">
+        {headers.map(h => {
+          const field = mappings[h.index] || 'ignore'
+          const style = FIELD_STYLES[field] || FIELD_STYLES.ignore
+          const isAiSuggested = !userEdited[h.index] && aiMappings?.find(a => a.col === h.index && a.confidence >= 0.5)
+          const sampleVals = sampleRows.map(row => String(row[h.index] ?? '').trim()).filter(Boolean)
+
+          return (
+            <div key={h.index} className={`flex flex-col sm:flex-row sm:items-center gap-2 p-2.5 rounded-lg border ${style.bg} border-gray-200/50 dark:border-gray-700/50`}>
+              {/* Column info */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-mono text-gray-400 shrink-0">#{h.index + 1}</span>
+                  <span className="text-xs font-semibold text-gray-700 dark:text-gray-200 truncate">
+                    {h.display}
+                  </span>
+                  {isAiSuggested && <span className="text-[9px] text-violet-500 shrink-0">✨</span>}
+                </div>
+                {sampleVals.length > 0 && (
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 truncate">
+                    Ex: {sampleVals.slice(0, 3).join(' · ')}
+                  </p>
+                )}
+              </div>
+
+              {/* Arrow */}
+              <svg className="hidden sm:block w-4 h-4 text-gray-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+              </svg>
+
+              {/* Field selector */}
+              <select
+                value={field}
+                onChange={e => handleChange(h.index, e.target.value)}
+                className={`w-full sm:w-44 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 ${style.text} focus:ring-2 focus:ring-indigo-400 focus:outline-none cursor-pointer`}
+              >
+                {COLUMN_FIELDS.map(f => (
+                  <option key={f.value} value={f.value}>{f.icon} {f.label}</option>
+                ))}
+              </select>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Duplicate warning */}
+      {duplicates.length > 0 && (
+        <p className="text-[10px] text-amber-600 dark:text-amber-400">
+          ⚠️ Campos duplicados: {[...new Set(duplicates)].map(f => COLUMN_FIELDS.find(c => c.value === f)?.label).join(', ')}
+        </p>
+      )}
+
+      {/* Preview table */}
+      {sampleRows.length > 0 && isValid && (
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Preview dos dados</p>
+          <div className="overflow-x-auto -mx-4 px-4">
+            <table className="w-full text-[10px] border-collapse">
+              <thead>
+                <tr>
+                  {headers.map(h => {
+                    const field = mappings[h.index] || 'ignore'
+                    if (field === 'ignore') return null
+                    const fInfo = COLUMN_FIELDS.find(f => f.value === field)
+                    const style = FIELD_STYLES[field]
+                    return (
+                      <th key={h.index} className={`text-left px-2 py-1 font-bold ${style.text}`}>
+                        {fInfo?.icon} {fInfo?.label}
+                      </th>
+                    )
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {sampleRows.map((row, ri) => (
+                  <tr key={ri} className="border-t border-gray-100 dark:border-gray-800">
+                    {headers.map(h => {
+                      const field = mappings[h.index] || 'ignore'
+                      if (field === 'ignore') return null
+                      return (
+                        <td key={h.index} className="px-2 py-1 text-gray-600 dark:text-gray-300 truncate max-w-[160px]">
+                          {String(row[h.index] ?? '').trim() || '—'}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Validation + actions */}
+      <div className="flex items-center gap-3 flex-wrap pt-1">
+        <button onClick={handleConfirm} disabled={!isValid || duplicates.length > 0}
+          className="px-4 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed">
+          ✅ Importar com este mapeamento
+        </button>
+        <button onClick={onCancel}
+          className="px-4 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors cursor-pointer">
+          Cancelar
+        </button>
+        {!isValid && (
+          <span className="text-[10px] text-red-500 dark:text-red-400">
+            Mapeie pelo menos <strong>Categoria</strong> e <strong>Valor</strong>
+          </span>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // ── Mapping panel for unrecognized categories ───────────
@@ -272,9 +435,7 @@ function MappingPanel({ unmapped, allCategories, onApply, onCancel, aiSuggestion
     <div className="mt-3 space-y-3 p-3 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950">
       <div className="flex items-center gap-2">
         <span className="text-sm">⚠️</span>
-        <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
-          Categorias não reconhecidas
-        </p>
+        <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">Categorias não reconhecidas</p>
         {hasAiSuggestions && (
           <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/50 text-violet-600 dark:text-violet-400">
             ✨ IA sugeriu
@@ -325,18 +486,27 @@ function MappingPanel({ unmapped, allCategories, onApply, onCancel, aiSuggestion
   )
 }
 
-// ── Componente ───────────────────────────────────────────
+// ── Main Component ───────────────────────────────────────
 
 export default function FileImporter({ onTotals, month }) {
   const [status, setStatus] = useState('idle')
   const [message, setMessage] = useState('')
   const [dragging, setDragging] = useState(false)
   const [userCategories, setUserCategories] = useState([])
+
+  // Category mapping state (existing)
   const [pendingUnmapped, setPendingUnmapped] = useState(null)
   const [pendingRows, setPendingRows] = useState(null)
   const [pendingFile, setPendingFile] = useState(null)
   const [importModal, setImportModal] = useState(null)
   const [aiSuggestions, setAiSuggestions] = useState(null)
+
+  // Smart column mapping state (new)
+  const [showColumnMapping, setShowColumnMapping] = useState(false)
+  const [pendingRawData, setPendingRawData] = useState(null)
+  const [aiColumnMappings, setAiColumnMappings] = useState(null)
+  const [aiMappingLoading, setAiMappingLoading] = useState(false)
+
   const importModeRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -344,11 +514,21 @@ export default function FileImporter({ onTotals, month }) {
     listCategories().then(setUserCategories).catch(() => {})
   }, [])
 
+  const resetAll = useCallback(() => {
+    setPendingUnmapped(null)
+    setPendingRows(null)
+    setPendingFile(null)
+    setImportModal(null)
+    setAiSuggestions(null)
+    setShowColumnMapping(false)
+    setPendingRawData(null)
+    setAiColumnMappings(null)
+    setAiMappingLoading(false)
+  }, [])
+
   const finishImport = useCallback(async (allRows, fileName, replaceExisting) => {
     if (month) {
-      if (replaceExisting) {
-        await clearTransactions(month)
-      }
+      if (replaceExisting) await clearTransactions(month)
       await bulkInsertTransactions(month, allRows.map(row => ({
         category: row.categoria,
         description: row.descricao || '',
@@ -358,7 +538,6 @@ export default function FileImporter({ onTotals, month }) {
         payment_status: row.payment_status || null,
       })))
     }
-
     setStatus('success')
     setMessage(`${allRows.length} lançamento(s) importado(s) de "${fileName}"`)
     onTotals?.()
@@ -366,26 +545,14 @@ export default function FileImporter({ onTotals, month }) {
 
   const executeImport = useCallback(async (rows, fileName, replaceExisting) => {
     setStatus('loading')
-    try {
-      await finishImport(rows, fileName, replaceExisting)
-    } catch (err) {
-      setStatus('error')
-      setMessage(err.message)
-    }
+    try { await finishImport(rows, fileName, replaceExisting) }
+    catch (err) { setStatus('error'); setMessage(err.message) }
   }, [finishImport])
 
   const checkExistingAndImport = useCallback(async (rows, fileName) => {
-    if (!month) {
-      await executeImport(rows, fileName, false)
-      return
-    }
-
+    if (!month) { await executeImport(rows, fileName, false); return }
     const existing = await listTransactions(month)
-    if (existing.length === 0) {
-      await executeImport(rows, fileName, false)
-      return
-    }
-
+    if (existing.length === 0) { await executeImport(rows, fileName, false); return }
     importModeRef.current = { rows, fileName }
     setImportModal(existing.length)
     setStatus('idle')
@@ -398,77 +565,102 @@ export default function FileImporter({ onTotals, month }) {
     await executeImport(rows, fileName, choice === 'replace')
   }, [executeImport])
 
-  const processFile = useCallback(
-    async (file) => {
-      setStatus('loading')
-      setMessage('')
-      setPendingUnmapped(null)
-      setPendingRows(null)
-      setPendingFile(null)
-      setImportModal(null)
+  // Process rows after column indices are known
+  const importWithIndices = useCallback(async (rawData, fileName, columnIndices) => {
+    setStatus('loading')
+    try {
+      const catMap = buildCategoryMap(userCategories)
+      const { rows, unmapped } = normalizeRows(rawData, catMap, columnIndices)
 
-      try {
-        if (file.size > MAX_FILE_SIZE_BYTES) {
-          throw new Error(
-            `Arquivo muito grande (máx. ${MAX_FILE_SIZE_BYTES / 1024 / 1024} MB). Escolha um arquivo menor.`,
-          )
-        }
-        const parser = getParser(file.name)
-        if (!parser) {
-          throw new Error(
-            `Formato não suportado: "${file.name}". Use CSV, XLSX ou XML.`,
-          )
-        }
+      const unmappedKeys = Object.keys(unmapped)
+      if (unmappedKeys.length > 0) {
+        setPendingRows(rows)
+        setPendingUnmapped(unmapped)
+        setPendingFile(fileName)
 
-        const rawData = await parser(file)
-        const catMap = buildCategoryMap(userCategories)
-        const { rows, unmapped } = normalizeRows(rawData, catMap)
-
-        const unmappedKeys = Object.keys(unmapped)
-        if (unmappedKeys.length > 0) {
-          setPendingRows(rows)
-          setPendingUnmapped(unmapped)
-          setPendingFile(file.name)
-
-          if (isAiAvailable()) {
-            try {
-              const descriptions = unmappedKeys.map(k => unmapped[k].original)
-              const aiResult = await categorizeBatch(descriptions)
-              const suggestions = {}
-              for (const key of unmappedKeys) {
-                const orig = unmapped[key].original
-                const validCats = userCategories.map(c => c.key)
-                const parentMap = {}
-                for (const c of userCategories) parentMap[c.parent_category] = c.key
-                const suggested = aiResult[orig]
-                if (suggested && (validCats.includes(suggested) || parentMap[suggested])) {
-                  suggestions[key] = validCats.includes(suggested) ? suggested : parentMap[suggested]
-                }
+        if (isAiAvailable()) {
+          try {
+            const descriptions = unmappedKeys.map(k => unmapped[k].original)
+            const aiResult = await categorizeBatch(descriptions)
+            const suggestions = {}
+            for (const key of unmappedKeys) {
+              const orig = unmapped[key].original
+              const validCats = userCategories.map(c => c.key)
+              const parentMap = {}
+              for (const c of userCategories) parentMap[c.parent_category] = c.key
+              const suggested = aiResult[orig]
+              if (suggested && (validCats.includes(suggested) || parentMap[suggested])) {
+                suggestions[key] = validCats.includes(suggested) ? suggested : parentMap[suggested]
               }
-              setAiSuggestions(Object.keys(suggestions).length > 0 ? suggestions : null)
-            } catch {
-              setAiSuggestions(null)
             }
-          }
-
-          setStatus('idle')
-          return
+            setAiSuggestions(Object.keys(suggestions).length > 0 ? suggestions : null)
+          } catch { setAiSuggestions(null) }
         }
-
-        if (rows.length === 0) {
-          throw new Error(
-            'Nenhuma linha válida encontrada. Verifique se as categorias correspondem a: fixas, cartão, investimento ou receita.',
-          )
-        }
-
-        await checkExistingAndImport(rows, file.name)
-      } catch (err) {
-        setStatus('error')
-        setMessage(err.message)
+        setStatus('idle')
+        return
       }
-    },
-    [userCategories, checkExistingAndImport],
-  )
+
+      if (rows.length === 0) {
+        throw new Error('Nenhuma linha válida encontrada. Verifique se as categorias correspondem a: fixas, cartão, investimento ou receita.')
+      }
+
+      await checkExistingAndImport(rows, fileName)
+    } catch (err) {
+      setStatus('error')
+      setMessage(err.message)
+    }
+  }, [userCategories, checkExistingAndImport])
+
+  const processFile = useCallback(async (file) => {
+    setStatus('loading')
+    setMessage('')
+    resetAll()
+
+    try {
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        throw new Error(`Arquivo muito grande (máx. ${MAX_FILE_SIZE_BYTES / 1024 / 1024} MB). Escolha um arquivo menor.`)
+      }
+      const parser = getParser(file.name)
+      if (!parser) throw new Error(`Formato não suportado: "${file.name}". Use CSV, XLSX ou XML.`)
+
+      const rawData = await parser(file)
+      if (!rawData.length) throw new Error('Arquivo vazio.')
+
+      const headers = rawData[0]
+      const autoDetected = findColumns(headers)
+
+      // Fast path: if required columns detected, proceed directly
+      if (autoDetected.catIdx >= 0 && autoDetected.valIdx >= 0) {
+        await importWithIndices(rawData, file.name, autoDetected)
+        return
+      }
+
+      // Slow path: show smart column mapping step
+      setPendingRawData(rawData)
+      setPendingFile(file.name)
+      setShowColumnMapping(true)
+      setStatus('idle')
+
+      // Kick off AI detection in background
+      if (isAiAvailable()) {
+        setAiMappingLoading(true)
+        detectColumnMapping(headers, rawData.slice(1, 6))
+          .then(result => setAiColumnMappings(result))
+          .finally(() => setAiMappingLoading(false))
+      }
+    } catch (err) {
+      setStatus('error')
+      setMessage(err.message)
+    }
+  }, [resetAll, importWithIndices])
+
+  // User confirmed column mapping
+  const handleColumnMappingConfirm = useCallback(async (indices) => {
+    setShowColumnMapping(false)
+    if (!pendingRawData) return
+    await importWithIndices(pendingRawData, pendingFile || 'arquivo', indices)
+    setPendingRawData(null)
+  }, [pendingRawData, pendingFile, importWithIndices])
 
   const handleApplyMapping = useCallback(async (mapping) => {
     if (!pendingUnmapped || !pendingRows) return
@@ -483,12 +675,9 @@ export default function FileImporter({ onTotals, month }) {
         }
       }
       const allRows = [...pendingRows, ...extraRows]
-      if (allRows.length === 0) {
-        throw new Error('Nenhuma linha válida após o mapeamento.')
-      }
+      if (allRows.length === 0) throw new Error('Nenhuma linha válida após o mapeamento.')
       setPendingUnmapped(null)
       setPendingRows(null)
-      setPendingFile(null)
       await checkExistingAndImport(allRows, pendingFile || 'arquivo')
     } catch (err) {
       setStatus('error')
@@ -502,22 +691,9 @@ export default function FileImporter({ onTotals, month }) {
     e.target.value = ''
   }
 
-  const handleDrop = (e) => {
-    e.preventDefault()
-    setDragging(false)
-    const file = e.dataTransfer.files?.[0]
-    if (file) processFile(file)
-  }
-
-  const handleDragOver = (e) => {
-    e.preventDefault()
-    setDragging(true)
-  }
-
-  const handleDragLeave = (e) => {
-    e.preventDefault()
-    setDragging(false)
-  }
+  const handleDrop = (e) => { e.preventDefault(); setDragging(false); const file = e.dataTransfer.files?.[0]; if (file) processFile(file) }
+  const handleDragOver = (e) => { e.preventDefault(); setDragging(true) }
+  const handleDragLeave = (e) => { e.preventDefault(); setDragging(false) }
 
   const statusColors = {
     idle: 'border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-800',
@@ -534,40 +710,35 @@ export default function FileImporter({ onTotals, month }) {
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onClick={() => inputRef.current?.click()}
-        className={`
-          relative flex flex-col items-center justify-center gap-2 sm:gap-3
-          rounded-2xl border-2 border-dashed p-6 sm:p-10 cursor-pointer
-          transition-all duration-200
-          ${dragging
-            ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950 scale-[1.02]'
-            : statusColors[status]}
-        `}
+        className={`relative flex flex-col items-center justify-center gap-2 sm:gap-3 rounded-2xl border-2 border-dashed p-6 sm:p-10 cursor-pointer transition-all duration-200 ${
+          dragging ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950 scale-[1.02]' : statusColors[status]
+        }`}
       >
-        <input
-          ref={inputRef}
-          type="file"
-          accept={ACCEPTED}
-          onChange={handleFileChange}
-          className="hidden"
-        />
-
+        <input ref={inputRef} type="file" accept={ACCEPTED} onChange={handleFileChange} className="hidden" />
         <div className="text-3xl sm:text-4xl">
           {status === 'loading' && '⏳'}
           {status === 'success' && '✅'}
           {status === 'error' && '❌'}
           {(status === 'idle' || dragging) && '📂'}
         </div>
-
         <p className="text-gray-600 dark:text-gray-300 text-center text-xs sm:text-sm font-medium">
-          {status === 'loading'
-            ? 'Processando arquivo...'
-            : 'Arraste um arquivo aqui ou clique para selecionar'}
+          {status === 'loading' ? 'Processando arquivo...' : 'Arraste um arquivo aqui ou clique para selecionar'}
         </p>
-
-        <span className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">CSV, XLSX ou XML</span>
+        <span className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">CSV, XLSX ou XML — qualquer formato de planilha</span>
       </div>
 
-      {/* Mapping panel for unrecognized categories */}
+      {/* Smart column mapping step */}
+      {showColumnMapping && pendingRawData && (
+        <ColumnMappingStep
+          rawData={pendingRawData}
+          aiMappings={aiColumnMappings}
+          aiLoading={aiMappingLoading}
+          onConfirm={handleColumnMappingConfirm}
+          onCancel={() => { resetAll(); setStatus('idle') }}
+        />
+      )}
+
+      {/* Category mapping panel (existing, for unrecognized categories) */}
       {pendingUnmapped && (
         <MappingPanel
           unmapped={pendingUnmapped}
@@ -601,15 +772,13 @@ export default function FileImporter({ onTotals, month }) {
         </div>
       )}
 
-      {/* Mensagem de status */}
+      {/* Status message */}
       {message && (
-        <div
-          className={`mt-4 rounded-xl px-4 py-3 text-sm ${
-            status === 'error'
-              ? 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-800'
-              : 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-800'
-          }`}
-        >
+        <div className={`mt-4 rounded-xl px-4 py-3 text-sm ${
+          status === 'error'
+            ? 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-800'
+            : 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-800'
+        }`}>
           {message}
         </div>
       )}

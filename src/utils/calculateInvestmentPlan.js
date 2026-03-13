@@ -111,7 +111,7 @@ export function calculateInvestmentPlan({
   let runningTotal = 0
   const schedule = allMonths.map(month => {
     const actual = actualMap.get(month) || 0
-    const isPast = month < currentKey
+    const _isPast = month < currentKey
     const inRange = month >= currentKey && month <= targetKey
     const isUnfilled = inRange && !actualMap.has(month)
 

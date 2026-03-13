@@ -14,12 +14,13 @@ function formatUpdatedAt(isoStr) {
 
 function InlineBalanceField({ icon, label, hint, value, updatedAt, onSave, onClear, accentColor = 'indigo' }) {
   const [editing, setEditing] = useState(false)
-  const [inputValue, setInputValue] = useState('')
+  const [inputValue, setInputValue] = useState(() => (value != null ? String(value) : ''))
   const inputRef = useRef(null)
 
-  useEffect(() => {
-    if (value != null) setInputValue(String(value))
-  }, [value])
+  const startEditing = () => {
+    setInputValue(value != null ? String(value) : '')
+    setEditing(true)
+  }
 
   useEffect(() => {
     if (editing && inputRef.current) inputRef.current.focus()
@@ -97,7 +98,7 @@ function InlineBalanceField({ icon, label, hint, value, updatedAt, onSave, onCle
           </button>
         </div>
       ) : (
-        <button onClick={() => setEditing(true)} className="w-full text-left cursor-pointer group">
+        <button onClick={startEditing} className="w-full text-left cursor-pointer group">
           {hasValue ? (
             <div>
               <p className={`text-base sm:text-lg font-bold ${c.text} transition-colors`}>{BRL(value)}</p>
