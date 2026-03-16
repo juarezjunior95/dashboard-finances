@@ -141,6 +141,7 @@ export default function App() {
   const statusTimer = useRef(null)
   const selectedMonthRef = useRef(selectedMonth)
   const previousUserIdRef = useRef(null)
+  const lastLoadedRef = useRef({ userId: null, month: null })
 
   useEffect(() => { totalsRef.current = totals }, [totals])
   useEffect(() => { selectedMonthRef.current = selectedMonth }, [selectedMonth])
@@ -353,6 +354,7 @@ export default function App() {
     // Troca de usuário: limpar cache (localStorage) e estado para não exibir dados do usuário anterior
     if (previousUserIdRef.current !== user.id) {
       previousUserIdRef.current = user.id
+      lastLoadedRef.current = { userId: null, month: null }
       clearUserData()
       setTotals({ ...EMPTY })
       totalsRef.current = { ...EMPTY }
@@ -376,6 +378,10 @@ export default function App() {
       setIndicators(null)
       setUserGoals([])
     }
+    if (lastLoadedRef.current.userId === user.id && lastLoadedRef.current.month === selectedMonth) {
+      return
+    }
+    lastLoadedRef.current = { userId: user.id, month: selectedMonth }
     refreshMonths()
     loadMonth(selectedMonth)
     loadCategories()

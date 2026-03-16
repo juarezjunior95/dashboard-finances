@@ -205,15 +205,13 @@ export default function TransactionList({ month, onTotalsChanged, onDetailedTota
     try {
       const data = await listTransactions(month)
       setTransactions(data)
-      if (expanded === null) {
-        setExpanded(data.length === 0)
-      }
+      setExpanded(prev => (prev === null ? data.length === 0 : prev))
     } catch {
       showToast({ type: 'error', message: 'Erro ao carregar transações.' })
     } finally {
       setLoading(false)
     }
-  }, [month, showToast, expanded])
+  }, [month, showToast])
 
   useEffect(() => {
     load()
