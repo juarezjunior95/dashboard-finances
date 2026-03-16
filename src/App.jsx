@@ -882,6 +882,7 @@ export default function App() {
                 incomeBreakdown={incomeBreakdown}
                 realBalance={realBalance}
                 reserveTransferred={reserveTransferred}
+                expenseStatus={expenseStatus}
               />
             )}
 

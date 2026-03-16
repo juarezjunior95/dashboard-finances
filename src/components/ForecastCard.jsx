@@ -62,7 +62,7 @@ const STATUS_BADGE = {
   neutral: { label: 'Acompanhe', cls: 'text-gray-500 dark:text-gray-400' },
 }
 
-export default function ForecastCard({ totals, selectedMonth, currentMonth, historicalSnapshots = [], prevTotals = null, incomeBreakdown = null, realBalance = null, reserveTransferred = null }) {
+export default function ForecastCard({ totals, selectedMonth, currentMonth, historicalSnapshots = [], prevTotals = null, incomeBreakdown = null, realBalance = null, reserveTransferred = null, expenseStatus = null }) {
   const [detailsOpen, setDetailsOpen] = useState(false)
 
   const isCurrentMonth = selectedMonth === currentMonth
@@ -110,13 +110,19 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
   const pctProjetado = Math.min((totalExpensesProjected / receita) * 100, 150)
   const noReceita = receitaReal === 0
 
-  // When income alone doesn't cover expenses but real balance + reserve does
+  // Real cash flow: considers bank balance + reserve, calculates what's left AFTER pending bills
   const hasRealCashFlow = realBalance != null && realBalance > 0
   const transferred = reserveTransferred || 0
+  const jaPago = expenseStatus?.paid || 0
+  const pendente = expenseStatus?.pending || 0
+  const hasPaidData = jaPago > 0 || pendente > 0
+  const semStatus = hasPaidData ? Math.max(0, currentExpenses - jaPago - pendente) : 0
+  const contasPendentes = hasPaidData ? (pendente + semStatus) : currentExpenses
   const realCashAvailable = hasRealCashFlow ? (realBalance + receitaReal + transferred) : 0
-  const realSaldo = hasRealCashFlow ? Math.round((realCashAvailable - currentExpenses) * 100) / 100 : null
-  const realOrcamentoDiario = hasRealCashFlow && realSaldo > 0 && daysRemaining > 0
-    ? Math.round((realSaldo / daysRemaining) * 100) / 100
+  // After paying all pending bills, what's left for the rest of the month
+  const realAfterPending = hasRealCashFlow ? Math.round((realCashAvailable - contasPendentes) * 100) / 100 : null
+  const realOrcamentoDiario = hasRealCashFlow && realAfterPending > 0 && daysRemaining > 0
+    ? Math.round((realAfterPending / daysRemaining) * 100) / 100
     : null
 
   return (
@@ -176,13 +182,13 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
                 </p>
               )}
             </>
-          ) : realSaldo != null && realSaldo > 0 ? (
+          ) : realAfterPending != null && realAfterPending > 0 ? (
             <>
               <p className="text-sm sm:text-base font-bold text-amber-600 dark:text-amber-400">
-                {BRL(realSaldo)}
+                {BRL(realAfterPending)}
               </p>
               <p className="text-[10px] text-amber-500 dark:text-amber-400">
-                com saldo + reserva
+                após contas pendentes
               </p>
               {realOrcamentoDiario > 0 && (
                 <p className="text-[10px] text-gray-400 dark:text-gray-500">
@@ -247,17 +253,29 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
       </div>
 
       {/* Contextual message */}
-      <p className={`text-xs sm:text-sm font-medium ${
-        riskLevel === 'safe' ? 'text-emerald-600 dark:text-emerald-400'
-          : riskLevel === 'attention' ? 'text-amber-600 dark:text-amber-400'
-          : noReceita ? 'text-gray-500 dark:text-gray-400'
-          : (realSaldo != null && realSaldo > 0) ? 'text-amber-600 dark:text-amber-400'
-          : 'text-red-600 dark:text-red-400'
-      }`}>
-        {currentSaldo < 0 && realSaldo != null && realSaldo > 0
-          ? `Receita não cobre os gastos, mas com saldo bancário${transferred > 0 ? ' + reserva' : ''} você tem ${BRL(realOrcamentoDiario || 0)}/dia nos próximos ${daysRemaining} dias.`
-          : message}
-      </p>
+      {currentSaldo < 0 && realAfterPending != null && realAfterPending > 0 ? (
+        <div className="space-y-1">
+          <p className="text-xs sm:text-sm font-medium text-amber-600 dark:text-amber-400">
+            Receita não cobre os gastos, mas seu caixa real dá conta.
+          </p>
+          <p className="text-[10px] text-gray-500 dark:text-gray-400">
+            {hasPaidData && contasPendentes > 0
+              ? `Faltam ${BRL(contasPendentes)} em contas pendentes. Após pagá-las, sobram ${BRL(realAfterPending)}.`
+              : `Caixa disponível: ${BRL(realCashAvailable)}. Após despesas: ${BRL(realAfterPending)}.`
+            }
+            {realOrcamentoDiario > 0 && ` Você pode gastar até ${BRL(realOrcamentoDiario)}/dia nos próximos ${daysRemaining} dias.`}
+          </p>
+        </div>
+      ) : (
+        <p className={`text-xs sm:text-sm font-medium ${
+          riskLevel === 'safe' ? 'text-emerald-600 dark:text-emerald-400'
+            : riskLevel === 'attention' ? 'text-amber-600 dark:text-amber-400'
+            : noReceita ? 'text-gray-500 dark:text-gray-400'
+            : 'text-red-600 dark:text-red-400'
+        }`}>
+          {message}
+        </p>
+      )}
 
       {/* Category breakdown */}
       {!noReceita && (

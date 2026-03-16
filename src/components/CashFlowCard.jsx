@@ -178,7 +178,7 @@ export default function CashFlowCard({
                       ? `Transfira mais ${BRL(cf.reserveNeeded)} da reserva para cobrir o mês.`
                       : 'Informe o saldo da reserva para ver quanto usar.'
                     : usedReserve
-                      ? `Atenção: ${BRL(cf.transferred)} veio da reserva. Sem ela, faltariam ${BRL(Math.max(0, cf.remainingToPay - (cf.balanceAccount + cf.expectedIncome)))}.`
+                      ? `Atenção: ${BRL(cf.transferred)} veio da reserva. Sem ela, faltariam ${BRL(Math.max(0, cf.totalExpenses - (cf.balanceAccount + cf.expectedIncome)))}.`
                       : 'Sua receita + saldo cobrem todas as despesas do mês.'
                   }
                 </p>
