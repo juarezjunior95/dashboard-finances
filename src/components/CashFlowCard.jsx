@@ -121,44 +121,70 @@ export default function CashFlowCard({
           </div>
 
           {/* Resultado */}
-          <div className={`rounded-xl p-3 sm:p-4 border ${
-            cf.needsReserve
-              ? 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950'
-              : 'border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950'
-          }`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className={`text-[10px] font-semibold uppercase tracking-wide ${
-                  cf.needsReserve ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'
-                }`}>
-                  {cf.needsReserve ? 'Ainda precisa da reserva' : 'Saldo positivo'}
-                </p>
-                <p className={`text-lg sm:text-xl font-bold mt-0.5 ${
-                  cf.needsReserve ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'
-                }`}>
-                  {cf.needsReserve ? BRL(cf.reserveNeeded) : BRL(cf.availableCash - cf.remainingToPay)}
+          {(() => {
+            const surplus = cf.availableCash - cf.remainingToPay
+            const usedReserve = cf.transferred > 0
+            // Three states: needs more reserve (amber), covered WITH reserve (blue/cautious), covered without reserve (green)
+            const state = cf.needsReserve ? 'needs_reserve' : usedReserve ? 'with_reserve' : 'healthy'
+            const styles = {
+              needs_reserve: {
+                border: 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950',
+                title: 'text-amber-600 dark:text-amber-400',
+                value: 'text-amber-700 dark:text-amber-400',
+                sub: 'text-amber-600 dark:text-amber-400',
+              },
+              with_reserve: {
+                border: 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950',
+                title: 'text-blue-600 dark:text-blue-400',
+                value: 'text-blue-700 dark:text-blue-400',
+                sub: 'text-blue-600 dark:text-blue-400',
+              },
+              healthy: {
+                border: 'border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950',
+                title: 'text-emerald-600 dark:text-emerald-400',
+                value: 'text-emerald-700 dark:text-emerald-400',
+                sub: 'text-emerald-600 dark:text-emerald-400',
+              },
+            }
+            const s = styles[state]
+            const labels = {
+              needs_reserve: 'Ainda precisa da reserva',
+              with_reserve: 'Coberto com reserva',
+              healthy: 'Saldo positivo',
+            }
+
+            return (
+              <div className={`rounded-xl p-3 sm:p-4 border ${s.border}`}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className={`text-[10px] font-semibold uppercase tracking-wide ${s.title}`}>
+                      {labels[state]}
+                    </p>
+                    <p className={`text-lg sm:text-xl font-bold mt-0.5 ${s.value}`}>
+                      {cf.needsReserve ? BRL(cf.reserveNeeded) : BRL(surplus)}
+                    </p>
+                  </div>
+                  {cf.hasReserve && (
+                    <div className="text-right">
+                      <p className="text-[10px] text-gray-400 dark:text-gray-500">Reserva após uso</p>
+                      <p className="text-xs font-bold text-gray-600 dark:text-gray-300">{BRL(cf.reserveAfterUse)}</p>
+                    </div>
+                  )}
+                </div>
+
+                <p className={`text-[10px] sm:text-xs mt-1.5 ${s.sub}`}>
+                  {cf.needsReserve
+                    ? cf.hasReserve
+                      ? `Transfira mais ${BRL(cf.reserveNeeded)} da reserva para cobrir o mês.`
+                      : 'Informe o saldo da reserva para ver quanto usar.'
+                    : usedReserve
+                      ? `Atenção: ${BRL(cf.transferred)} veio da reserva. Sem ela, faltariam ${BRL(Math.max(0, cf.remainingToPay - (cf.balanceAccount + cf.expectedIncome)))}.`
+                      : 'Sua receita + saldo cobrem todas as despesas do mês.'
+                  }
                 </p>
               </div>
-              {cf.hasReserve && (
-                <div className="text-right">
-                  <p className="text-[10px] text-gray-400 dark:text-gray-500">Reserva após uso</p>
-                  <p className="text-xs font-bold text-gray-600 dark:text-gray-300">{BRL(cf.reserveAfterUse)}</p>
-                </div>
-              )}
-            </div>
-            <p className={`text-[10px] sm:text-xs mt-1.5 ${
-              cf.needsReserve ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'
-            }`}>
-              {cf.needsReserve
-                ? cf.hasReserve
-                  ? `Transfira mais ${BRL(cf.reserveNeeded)} da reserva para cobrir o mês.`
-                  : 'Informe o saldo da reserva para ver quanto usar.'
-                : cf.transferred > 0
-                  ? `Reserva usada: ${BRL(cf.transferred)}. Caixa cobre o restante.`
-                  : 'Sua receita + saldo cobrem todas as despesas do mês.'
-              }
-            </p>
-          </div>
+            )
+          })()}
         </>
       ) : (
         <div className="text-center py-4">

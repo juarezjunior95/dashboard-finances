@@ -62,7 +62,7 @@ const STATUS_BADGE = {
   neutral: { label: 'Acompanhe', cls: 'text-gray-500 dark:text-gray-400' },
 }
 
-export default function ForecastCard({ totals, selectedMonth, currentMonth, historicalSnapshots = [], prevTotals = null, incomeBreakdown = null, realBalance = null }) {
+export default function ForecastCard({ totals, selectedMonth, currentMonth, historicalSnapshots = [], prevTotals = null, incomeBreakdown = null, realBalance = null, reserveTransferred = null }) {
   const [detailsOpen, setDetailsOpen] = useState(false)
 
   const isCurrentMonth = selectedMonth === currentMonth
@@ -109,6 +109,15 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
   const pctGasto = Math.min((currentExpenses / receita) * 100, 150)
   const pctProjetado = Math.min((totalExpensesProjected / receita) * 100, 150)
   const noReceita = receitaReal === 0
+
+  // When income alone doesn't cover expenses but real balance + reserve does
+  const hasRealCashFlow = realBalance != null && realBalance > 0
+  const transferred = reserveTransferred || 0
+  const realCashAvailable = hasRealCashFlow ? (realBalance + receitaReal + transferred) : 0
+  const realSaldo = hasRealCashFlow ? Math.round((realCashAvailable - currentExpenses) * 100) / 100 : null
+  const realOrcamentoDiario = hasRealCashFlow && realSaldo > 0 && daysRemaining > 0
+    ? Math.round((realSaldo / daysRemaining) * 100) / 100
+    : null
 
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-6 space-y-4">
@@ -164,6 +173,20 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
               {daysRemaining > 0 && orcamentoDiario > 0 && (
                 <p className="text-[10px] text-gray-400 dark:text-gray-500">
                   {BRL(orcamentoDiario)}/dia
+                </p>
+              )}
+            </>
+          ) : realSaldo != null && realSaldo > 0 ? (
+            <>
+              <p className="text-sm sm:text-base font-bold text-amber-600 dark:text-amber-400">
+                {BRL(realSaldo)}
+              </p>
+              <p className="text-[10px] text-amber-500 dark:text-amber-400">
+                com saldo + reserva
+              </p>
+              {realOrcamentoDiario > 0 && (
+                <p className="text-[10px] text-gray-400 dark:text-gray-500">
+                  {BRL(realOrcamentoDiario)}/dia
                 </p>
               )}
             </>
@@ -228,9 +251,12 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
         riskLevel === 'safe' ? 'text-emerald-600 dark:text-emerald-400'
           : riskLevel === 'attention' ? 'text-amber-600 dark:text-amber-400'
           : noReceita ? 'text-gray-500 dark:text-gray-400'
+          : (realSaldo != null && realSaldo > 0) ? 'text-amber-600 dark:text-amber-400'
           : 'text-red-600 dark:text-red-400'
       }`}>
-        {message}
+        {currentSaldo < 0 && realSaldo != null && realSaldo > 0
+          ? `Receita não cobre os gastos, mas com saldo bancário${transferred > 0 ? ' + reserva' : ''} você tem ${BRL(realOrcamentoDiario || 0)}/dia nos próximos ${daysRemaining} dias.`
+          : message}
       </p>
 
       {/* Category breakdown */}
