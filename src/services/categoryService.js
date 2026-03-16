@@ -155,8 +155,7 @@ export async function listCategories() {
     setStore(withBuiltins)
     return withBuiltins
   } catch {
-    const stored = getStore()
-    if (stored.length > 0) return ensureBuiltinCategories(stored, null)
+    // Com usuário logado, não usar cache (pode ser de outro usuário); retornar só padrões
     const fallback = DEFAULT_CATEGORIES.map(c => ({
       id: crypto.randomUUID(),
       ...c,

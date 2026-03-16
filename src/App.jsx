@@ -15,6 +15,7 @@ import { SkeletonDashboardPage } from './components/Skeleton'
 import { useDarkMode } from './hooks/useDarkMode'
 import { useAuth } from './contexts/AuthContext'
 import { getSnapshot, upsertSnapshot, listMonths, listAllSnapshots, deleteSnapshot } from './services/snapshotService'
+import { clearUserData } from './lib/clearUserData'
 import { listCategories } from './services/categoryService'
 import {
   getTransactionTotals,
@@ -338,9 +339,10 @@ export default function App() {
       previousUserIdRef.current = null
       return
     }
-    // Troca de usuário: limpar estado do dashboard para não exibir dados do usuário anterior
+    // Troca de usuário: limpar cache (localStorage) e estado para não exibir dados do usuário anterior
     if (previousUserIdRef.current !== user.id) {
       previousUserIdRef.current = user.id
+      clearUserData()
       setTotals({ ...EMPTY })
       totalsRef.current = { ...EMPTY }
       setPrevTotals(null)
