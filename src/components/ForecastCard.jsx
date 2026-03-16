@@ -110,20 +110,19 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
   const pctProjetado = Math.min((totalExpensesProjected / receita) * 100, 150)
   const noReceita = receitaReal === 0
 
-  // Real cash flow: considers bank balance + reserve, calculates what's left AFTER pending bills
-  const hasRealCashFlow = realBalance != null && realBalance > 0
+  // Saldo líquido real: banco - contas pendentes (sem inflar com reserva)
+  // O saldo real já reflete transferências da reserva que já aconteceram.
+  const hasRealBalance = realBalance != null && realBalance > 0
   const transferred = reserveTransferred || 0
   const jaPago = expenseStatus?.paid || 0
   const pendente = expenseStatus?.pending || 0
   const hasPaidData = jaPago > 0 || pendente > 0
   const semStatus = hasPaidData ? Math.max(0, currentExpenses - jaPago - pendente) : 0
-  const contasPendentes = hasPaidData ? (pendente + semStatus) : currentExpenses
-  const realCashAvailable = hasRealCashFlow ? (realBalance + receitaReal + transferred) : 0
-  // After paying all pending bills, what's left for the rest of the month
-  const realAfterPending = hasRealCashFlow ? Math.round((realCashAvailable - contasPendentes) * 100) / 100 : null
-  const realOrcamentoDiario = hasRealCashFlow && realAfterPending > 0 && daysRemaining > 0
-    ? Math.round((realAfterPending / daysRemaining) * 100) / 100
-    : null
+  const contasPendentes = hasPaidData ? (pendente + semStatus) : 0
+  const saldoLiquido = hasRealBalance ? Math.round((realBalance - contasPendentes) * 100) / 100 : null
+  const gastoDiarioReal = hasRealBalance && saldoLiquido > 0 && daysRemaining > 0
+    ? Math.round((saldoLiquido / daysRemaining) * 100) / 100
+    : 0
 
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-6 space-y-4">
@@ -171,6 +170,33 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
           <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase">Disponível</p>
           {noReceita ? (
             <p className="text-sm sm:text-base font-bold text-gray-400">—</p>
+          ) : hasRealBalance ? (
+            saldoLiquido > 0 ? (
+              <>
+                <p className={`text-sm sm:text-base font-bold ${transferred > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                  {BRL(saldoLiquido)}
+                </p>
+                {contasPendentes > 0 && (
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500">
+                    após R$ {contasPendentes.toLocaleString('pt-BR')} pendentes
+                  </p>
+                )}
+                {gastoDiarioReal > 0 && (
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500">
+                    {BRL(gastoDiarioReal)}/dia
+                  </p>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="text-sm sm:text-base font-bold text-red-600 dark:text-red-400">
+                  Déficit {BRL(Math.abs(saldoLiquido))}
+                </p>
+                <p className="text-[10px] text-red-500 dark:text-red-400">
+                  saldo não cobre pendentes
+                </p>
+              </>
+            )
           ) : currentSaldo >= 0 ? (
             <>
               <p className="text-sm sm:text-base font-bold text-emerald-600 dark:text-emerald-400">
@@ -179,20 +205,6 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
               {daysRemaining > 0 && orcamentoDiario > 0 && (
                 <p className="text-[10px] text-gray-400 dark:text-gray-500">
                   {BRL(orcamentoDiario)}/dia
-                </p>
-              )}
-            </>
-          ) : realAfterPending != null && realAfterPending > 0 ? (
-            <>
-              <p className="text-sm sm:text-base font-bold text-amber-600 dark:text-amber-400">
-                {BRL(realAfterPending)}
-              </p>
-              <p className="text-[10px] text-amber-500 dark:text-amber-400">
-                após contas pendentes
-              </p>
-              {realOrcamentoDiario > 0 && (
-                <p className="text-[10px] text-gray-400 dark:text-gray-500">
-                  {BRL(realOrcamentoDiario)}/dia
                 </p>
               )}
             </>
@@ -253,18 +265,35 @@ export default function ForecastCard({ totals, selectedMonth, currentMonth, hist
       </div>
 
       {/* Contextual message */}
-      {currentSaldo < 0 && realAfterPending != null && realAfterPending > 0 ? (
+      {hasRealBalance ? (
         <div className="space-y-1">
-          <p className="text-xs sm:text-sm font-medium text-amber-600 dark:text-amber-400">
-            Receita não cobre os gastos, mas seu caixa real dá conta.
-          </p>
-          <p className="text-[10px] text-gray-500 dark:text-gray-400">
-            {hasPaidData && contasPendentes > 0
-              ? `Faltam ${BRL(contasPendentes)} em contas pendentes. Após pagá-las, sobram ${BRL(realAfterPending)}.`
-              : `Caixa disponível: ${BRL(realCashAvailable)}. Após despesas: ${BRL(realAfterPending)}.`
-            }
-            {realOrcamentoDiario > 0 && ` Você pode gastar até ${BRL(realOrcamentoDiario)}/dia nos próximos ${daysRemaining} dias.`}
-          </p>
+          {saldoLiquido > 0 ? (
+            <>
+              <p className={`text-xs sm:text-sm font-medium ${transferred > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                {transferred > 0
+                  ? `Receita não cobriu os gastos — reserva foi usada.`
+                  : daysRemaining > 0 && gastoDiarioReal > 0
+                    ? `Você pode gastar até ${BRL(gastoDiarioReal)}/dia nos próximos ${daysRemaining} dias.`
+                    : 'Suas contas estão cobertas.'
+                }
+              </p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                Saldo em conta: {BRL(realBalance)}.
+                {contasPendentes > 0 && ` Contas pendentes: ${BRL(contasPendentes)}.`}
+                {saldoLiquido > 0 && ` Líquido para gastar: ${BRL(saldoLiquido)}.`}
+                {gastoDiarioReal > 0 && daysRemaining > 0 && ` (${BRL(gastoDiarioReal)}/dia por ${daysRemaining} dias)`}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-xs sm:text-sm font-medium text-red-600 dark:text-red-400">
+                Orçamento em déficit — saldo não cobre as contas pendentes.
+              </p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                Saldo em conta: {BRL(realBalance)}. Contas pendentes: {BRL(contasPendentes)}. Faltam {BRL(Math.abs(saldoLiquido))}.
+              </p>
+            </>
+          )}
         </div>
       ) : (
         <p className={`text-xs sm:text-sm font-medium ${
