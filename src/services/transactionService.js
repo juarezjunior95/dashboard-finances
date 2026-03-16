@@ -27,14 +27,9 @@ async function getUser() {
 export async function listTransactions(month) {
   const user = await getUser()
 
-  if (!user) {
-    const store = getStore()
-    const items = store[month] || []
-    return items.sort((a, b) =>
-      (b.date || '').localeCompare(a.date || '') ||
-      (b.created_at || '').localeCompare(a.created_at || '')
-    )
-  }
+  // Se não conseguimos confirmar o usuário (ex.: lock do Supabase), não devolver cache
+  // para evitar mostrar transações de outro usuário.
+  if (!user) return []
 
   try {
     const { data, error } = await supabase
