@@ -52,11 +52,8 @@ export async function listTransactions(month) {
     setStore(store)
     return data || []
   } catch {
-    const store = getStore()
-    return (store[month] || []).sort((a, b) =>
-      (b.date || '').localeCompare(a.date || '') ||
-      (b.created_at || '').localeCompare(a.created_at || '')
-    )
+    // Com usuário logado, não devolver cache: pode ser de outro usuário (ex.: após troca de conta)
+    return []
   }
 }
 

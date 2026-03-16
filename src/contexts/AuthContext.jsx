@@ -33,6 +33,7 @@ export function AuthProvider({ children }) {
   }
 
   async function signIn(email, password) {
+    clearUserData()
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,

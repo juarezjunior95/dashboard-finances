@@ -49,7 +49,8 @@ export async function getSnapshot(month) {
     }
     return data
   } catch {
-    return getStore()[month] || null
+    // Com usuário logado, não devolver cache: pode ser de outro usuário
+    return null
   }
 }
 
@@ -183,7 +184,8 @@ export async function listMonths() {
     const merged = [...new Set([...months, ...localMonths])].sort()
     return merged
   } catch {
-    return Object.keys(getStore()).sort()
+    // Com usuário logado, não devolver cache: pode ser de outro usuário
+    return []
   }
 }
 
@@ -209,8 +211,8 @@ export async function listAllSnapshots() {
     setStore(store)
     return data || []
   } catch {
-    const store = getStore()
-    return Object.values(store).sort((a, b) => (a.month || '').localeCompare(b.month || ''))
+    // Com usuário logado, não devolver cache: pode ser de outro usuário
+    return []
   }
 }
 
