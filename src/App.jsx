@@ -134,6 +134,8 @@ export default function App() {
   const [indicators, setIndicators] = useState(null)
   const [activityKey, setActivityKey] = useState(0)
   const [userGoals, setUserGoals] = useState([])
+  const [pwaRefreshReady, setPwaRefreshReady] = useState(false)
+  const pwaUpdateSWRef = useRef(null)
 
   const totalsRef = useRef(totals)
   const statusTimer = useRef(null)
@@ -143,6 +145,15 @@ export default function App() {
   useEffect(() => { totalsRef.current = totals }, [totals])
   useEffect(() => { selectedMonthRef.current = selectedMonth }, [selectedMonth])
   useEffect(() => () => { clearTimeout(statusTimer.current) }, [])
+
+  useEffect(() => {
+    const handler = (e) => {
+      pwaUpdateSWRef.current = e.detail?.updateSW
+      setPwaRefreshReady(true)
+    }
+    window.addEventListener('pwa-need-refresh', handler)
+    return () => window.removeEventListener('pwa-need-refresh', handler)
+  }, [])
 
   // ── Load available months ──
 
@@ -623,6 +634,18 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      {pwaRefreshReady && (
+        <div className="sticky top-0 z-50 bg-indigo-600 text-white px-3 py-2 flex items-center justify-center gap-3 text-sm">
+          <span>Nova versão disponível.</span>
+          <button
+            type="button"
+            onClick={() => pwaUpdateSWRef.current?.()}
+            className="font-semibold underline focus:outline-none focus:ring-2 focus:ring-white rounded"
+          >
+            Recarregar
+          </button>
+        </div>
+      )}
       {/* Header — sticky */}
       <header className="sticky top-0 z-40 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800">
         <div className="max-w-5xl mx-auto px-3 sm:px-4 py-3 sm:py-4 flex items-center justify-between gap-3">

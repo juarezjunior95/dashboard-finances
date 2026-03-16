@@ -31,14 +31,22 @@ export async function listTransactions(month) {
   // para evitar mostrar transações de outro usuário.
   if (!user) return []
 
+  const FETCH_TIMEOUT_MS = 15000
+
   try {
-    const { data, error } = await supabase
+    const query = supabase
       .from('transactions')
       .select('*')
       .eq('user_id', user.id)
       .eq('month', month)
       .order('date', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })
+
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('timeout')), FETCH_TIMEOUT_MS)
+    })
+
+    const { data, error } = await Promise.race([query, timeoutPromise])
 
     if (error) throw error
 

@@ -445,10 +445,20 @@ export default function TransactionList({ month, onTotalsChanged, onDetailedTota
 
           {/* Empty state */}
           {transactions.length === 0 && !adding && (
-            <div className="text-center py-8">
+            <div className="text-center py-8 space-y-3">
               <p className="text-xs text-gray-400 dark:text-gray-500">
                 Nenhuma transação neste mês. Importe um arquivo ou adicione manualmente.
               </p>
+              <p className="text-[10px] text-gray-400 dark:text-gray-500">
+                Problemas ao carregar?
+              </p>
+              <button
+                type="button"
+                onClick={() => load()}
+                className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 cursor-pointer underline focus:outline-none focus:ring-2 focus:ring-indigo-400 rounded"
+              >
+                Tente novamente
+              </button>
             </div>
           )}
 
