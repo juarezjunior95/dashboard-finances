@@ -294,18 +294,50 @@ function getParser(fileName) {
 
 // ── Smart Column Mapping Step ────────────────────────────
 
+/** Detecta se uma coluna parece conter valores numéricos (para sugerir "Valor") */
+function detectAmountColumn(rawData, colIndex, minRows = 2) {
+  if (!rawData || rawData.length < 2) return false
+  let numeric = 0
+  for (let r = 1; r < Math.min(rawData.length, 15); r++) {
+    const row = rawData[r]
+    const cell = row && row[colIndex]
+    if (cell == null && cell !== 0) continue
+    const n = toNumberBR(cell)
+    if (typeof n === 'number' && !Number.isNaN(n)) numeric++
+  }
+  return numeric >= minRows
+}
+
+/** Detecta coluna que parece categoria (valores que batem com chaves conhecidas) */
+function detectCategoryColumn(rawData, colIndex, minRows = 1) {
+  if (!rawData || rawData.length < 2) return false
+  const keys = ['receita', 'fixas', 'cartao', 'invest', 'compras', 'reserva', 'contas fixas', 'cartão', 'investimentos']
+  let match = 0
+  for (let r = 1; r < Math.min(rawData.length, 15); r++) {
+    const row = rawData[r]
+    const cell = row && row[colIndex]
+    const s = String(cell ?? '').trim().toLowerCase()
+    if (!s) continue
+    if (keys.some(k => s === k || s.includes(k))) match++
+  }
+  return match >= minRows
+}
+
 function ColumnMappingStep({ rawData, aiMappings, aiLoading, onConfirm, onCancel }) {
   const headers = useMemo(() => {
     const row0 = rawData?.[0]
     if (!row0 || !Array.isArray(row0)) return []
-    return Array.from(row0, (h, i) => ({
+    const maxCols = Math.max(
+      row0.length,
+      ...(rawData.slice(0, 8).map(r => (r && Array.isArray(r) ? r.length : 0)))
+    return Array.from({ length: maxCols }, (_, i) => ({
       index: i,
-      name: String(h ?? '').trim(),
-      display: String(h ?? '').trim() || `Coluna ${i + 1}`,
+      name: String((row0[i] ?? '')).trim(),
+      display: String((row0[i] ?? '')).trim() || `Coluna ${i + 1}`,
     }))
   }, [rawData])
 
-  const sampleRows = useMemo(() => (rawData && rawData.length > 1 ? rawData.slice(1, 4) : []), [rawData])
+  const sampleRows = useMemo(() => (rawData && rawData.length > 1 ? rawData.slice(1, 6) : []), [rawData])
   const [userEdited, setUserEdited] = useState({})
 
   const [mappings, setMappings] = useState(() => {
@@ -319,6 +351,32 @@ function ColumnMappingStep({ rawData, aiMappings, aiLoading, onConfirm, onCancel
         m[h.index] = 'ignore'
       } else {
         m[h.index] = 'ignore'
+      }
+    }
+    if (!Object.values(m).includes('amount')) {
+      let best = -1
+      let bestCount = 0
+      for (const h of headers) {
+        if (h == null || typeof h !== 'object') continue
+        if (m[h.index] !== 'ignore') continue
+        if (detectAmountColumn(rawData, h.index)) {
+          let count = 0
+          for (let r = 1; r < Math.min(rawData.length, 15); r++) {
+            const n = toNumberBR((rawData[r] && rawData[r][h.index]) ?? '')
+            if (typeof n === 'number' && !Number.isNaN(n)) count++
+          }
+          if (count > bestCount) { bestCount = count; best = h.index }
+        }
+      }
+      if (best >= 0) m[best] = 'amount'
+    }
+    if (!Object.values(m).includes('category')) {
+      for (const h of headers) {
+        if (h == null || typeof h !== 'object') continue
+        if (m[h.index] !== 'ignore') continue
+        if (detectCategoryColumn(rawData, h.index)) { m[h.index] = 'category'; break }
+        const sample = rawData.slice(1, 5).map(row => String((row && row[h.index]) ?? '').trim()).filter(Boolean)
+        if (sample.length >= 1) { m[h.index] = 'category'; break }
       }
     }
     return m
