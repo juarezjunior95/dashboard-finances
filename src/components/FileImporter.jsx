@@ -953,7 +953,7 @@ export default function FileImporter({ onTotals, month }) {
             className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-400"
           />
           <label htmlFor="use-gemini-import" className="text-xs font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
-            Usar extração com IA (Gemini) — CSV, XLSX ou imagem
+            Usar extração com IA — CSV, XLSX ou imagem (Gemini)
           </label>
         </div>
       )}

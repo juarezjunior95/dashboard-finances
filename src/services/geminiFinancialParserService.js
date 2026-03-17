@@ -5,26 +5,27 @@ const SYSTEM_PROMPT = `Você é um extrator de dados financeiros. Sua única sa�
 
 INPUT: Qualquer tabela financeira (texto CSV/planilha) ou imagem de planilha/recibo.
 
-OUTPUT: Um único array de objetos JSON, cada objeto com exatamente estes campos:
-- "date": string no formato "YYYY-MM-DD" (ou null se não identificável)
-- "description": string com o título/descrição do lançamento
-- "amount": número float (positivo = receita, negativo = despesa). NUNCA use strings como "R$ 1.249,00"; converta para número puro (ex: -1249.00)
+OUTPUT: Um único array de objetos JSON, cada objeto com exatamente estes campos (nomes em português):
+- "data": string no formato "YYYY-MM-DD" (ou null se não identificável)
+- "descricao": string com o título/descrição do lançamento
+- "valor": número (float). Positivo = receita, negativo = despesa. NUNCA use strings como "R$ 1.249,00"; converta para número puro (ex: -1249.00)
 - "status": exatamente "pago" ou "pendente"
 - "is_reserva": boolean. Marque true se o título ou categoria mencionar: Reserva, Transferência de reserva, Fundo de Segurança, Fundo de emergência, Aplicação reserva
 
 REGRAS DE NORMALIZAÇÃO:
-- amount: remover "R$", trocar vírgula por ponto, converter para float. Despesas como números negativos.
+- valor: remover "R$", trocar vírgula por ponto, converter para número. Despesas como números negativos.
 - status: mapear "ok", "recebido", "concluído", "pago", "sim" -> "pago"; "pendente", "a pagar", "não" -> "pendente"
-- Se não houver informação de data, use null para date.
-- Retorne APENAS o array JSON, sem markdown e sem explicação. Exemplo: [{"date":"2026-03-01","description":"Aluguel","amount":-850,"status":"pendente","is_reserva":false}]`
+- Se não houver informação de data, use null para data.
+- Retorne APENAS o array JSON, sem markdown e sem explicação. Exemplo: [{"data":"2026-03-01","descricao":"Aluguel","valor":-850,"status":"pendente","is_reserva":false}]`
 
 function getApiKey() {
   return import.meta.env.VITE_GEMINI_API_KEY || null
 }
 
+/** Verifica se a extração com IA está disponível (VITE_GEMINI_API_KEY definida no .env) */
 export function isGeminiAvailable() {
   const key = getApiKey()
-  return !!key && key !== 'sua-gemini-api-key-aqui'
+  return typeof key === 'string' && key.length > 0 && key !== 'sua-gemini-api-key-aqui'
 }
 
 /**
@@ -35,7 +36,9 @@ export function isGeminiAvailable() {
  */
 export async function processFinancialInput(fileContent, mimeType) {
   const apiKey = getApiKey()
-  if (!apiKey) throw new Error('VITE_GEMINI_API_KEY não configurada.')
+  if (!apiKey || typeof apiKey !== 'string') {
+    throw new Error('VITE_GEMINI_API_KEY não configurada. Adicione no arquivo .env na raiz do projeto.')
+  }
 
   const genAI = new GoogleGenerativeAI(apiKey)
   const model = genAI.getGenerativeModel({
@@ -92,15 +95,17 @@ export async function processFinancialInput(fileContent, mimeType) {
 
   const normalized = items
     .map((item) => {
-      let amount = item.amount
+      const rawValor = item.valor ?? item.amount
+      let amount = rawValor
       if (typeof amount === 'string') {
         amount = parseFloat(amount.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '')) || 0
       }
       if (amount != null && typeof amount !== 'number') amount = Number(amount)
       if (amount == null || Number.isNaN(amount)) amount = 0
 
-      const date = item.date && /^\d{4}-\d{2}-\d{2}$/.test(String(item.date)) ? String(item.date) : null
-      const description = String(item.description ?? '').trim() || 'Sem descrição'
+      const rawData = item.data ?? item.date
+      const date = rawData && /^\d{4}-\d{2}-\d{2}$/.test(String(rawData)) ? String(rawData) : null
+      const description = String(item.descricao ?? item.description ?? '').trim() || 'Sem descrição'
       const status = item.status === 'pago' || item.status === 'pendente' ? item.status : 'pendente'
       const is_reserva = Boolean(item.is_reserva)
 
