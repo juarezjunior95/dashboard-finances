@@ -64,7 +64,7 @@ export function guessFieldFromHeader(header) {
   if (['categoria', 'category', 'tipo', 'type'].some(k => h === k || h.includes(k))) return 'category'
   if (['valor', 'value', 'amount', 'quantia', 'total', 'preço', 'preco'].some(k => h === k || h.includes(k))) return 'amount'
   if (['data', 'date', 'dia', 'dt', 'pay day', 'payday', 'vencimento', 'dt_vencimento', 'paydate'].some(k => h === k || h.includes(k))) return 'date'
-  if (['descricao', 'descrição', 'description', 'desc', 'nome', 'name', 'historico', 'histórico', 'item', 'lançamento', 'lancamento'].some(k => h === k || h.includes(k))) return 'description'
+  if (['descricao', 'descrição', 'description', 'desc', 'nome', 'name', 'historico', 'histórico', 'item', 'lançamento', 'lancamento', 'titulo', 'título', 'título/descrição'].some(k => h === k || h.includes(k))) return 'description'
   if (['status', 'situacao', 'situação', 'pago', 'estado', 'payment'].some(k => h === k || h.includes(k))) return 'payment_status'
   return null
 }

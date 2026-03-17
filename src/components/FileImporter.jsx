@@ -108,9 +108,9 @@ function findHeaderRowInGrid(sheetData) {
 }
 
 function normalizePaymentStatus(raw) {
-  if (!raw) return null
+  if (raw == null || String(raw).trim() === '') return null
   const s = String(raw).trim().toLowerCase()
-  if (['pago', 'paid', 'sim', 'yes', '1', 'ok'].includes(s)) return 'paid'
+  if (['pago', 'paid', 'sim', 'yes', '1', 'ok', 'x'].includes(s)) return 'paid'
   if (['pendente', 'pending', 'nao', 'não', 'no', '0'].includes(s)) return 'pending'
   return null
 }
@@ -164,7 +164,10 @@ function normalizeRows(rawRows, catMap, customIndices) {
 
     if (Number.isNaN(valor)) continue
 
-    const descricao = descIdx !== -1 ? String(row[descIdx] ?? '').trim() : rawCat
+    // Descrição = título da linha (ex.: Dizimo, ALUGUEL). Se houver coluna de título/descrição, usar; senão não repetir categoria (deixar vazio)
+    const descricao = descIdx !== -1
+      ? String(row[descIdx] ?? '').trim()
+      : ''
     const data = dateIdx !== -1 ? tryParseDate(row[dateIdx]) : null
     const payment_status = statusIdx !== -1 ? normalizePaymentStatus(row[statusIdx]) : null
 
@@ -292,21 +295,23 @@ function getParser(fileName) {
 // ── Smart Column Mapping Step ────────────────────────────
 
 function ColumnMappingStep({ rawData, aiMappings, aiLoading, onConfirm, onCancel }) {
-  const headers = useMemo(() =>
-    rawData[0].map((h, i) => ({
+  const headers = useMemo(() => {
+    const row0 = rawData?.[0]
+    if (!row0 || !Array.isArray(row0)) return []
+    return Array.from(row0, (h, i) => ({
       index: i,
       name: String(h ?? '').trim(),
       display: String(h ?? '').trim() || `Coluna ${i + 1}`,
-    })),
-    [rawData],
-  )
+    }))
+  }, [rawData])
 
-  const sampleRows = useMemo(() => rawData.slice(1, 4), [rawData])
+  const sampleRows = useMemo(() => (rawData && rawData.length > 1 ? rawData.slice(1, 4) : []), [rawData])
   const [userEdited, setUserEdited] = useState({})
 
   const [mappings, setMappings] = useState(() => {
     const m = {}
     for (const h of headers) {
+      if (h == null || typeof h !== 'object') continue
       const heuristic = guessFieldFromHeader(h.name)
       if (heuristic) {
         m[h.index] = heuristic
@@ -383,11 +388,11 @@ function ColumnMappingStep({ rawData, aiMappings, aiLoading, onConfirm, onCancel
 
       {/* Column mapping cards */}
       <div className="space-y-2">
-        {headers.map(h => {
+        {headers.filter(Boolean).map(h => {
           const field = mappings[h.index] || 'ignore'
           const style = FIELD_STYLES[field] || FIELD_STYLES.ignore
           const isAiSuggested = !userEdited[h.index] && aiMappings?.find(a => a.col === h.index && a.confidence >= 0.5)
-          const sampleVals = sampleRows.map(row => String(row[h.index] ?? '').trim()).filter(Boolean)
+          const sampleVals = sampleRows.map(row => String((row && row[h.index]) ?? '').trim()).filter(Boolean)
 
           return (
             <div key={h.index} className={`flex flex-col sm:flex-row sm:items-center gap-2 p-2.5 rounded-lg border ${style.bg} border-gray-200/50 dark:border-gray-700/50`}>
