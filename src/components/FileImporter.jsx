@@ -88,9 +88,23 @@ function findColumns(headers) {
   const catIdx = lower.findIndex((h) => ['categoria', 'category', 'tipo', 'type'].includes(h))
   const valIdx = lower.findIndex((h) => ['valor', 'value', 'amount', 'quantia', 'total'].includes(h))
   const dateIdx = lower.findIndex((h) => ['data', 'date', 'dia', 'dt', 'pay day', 'payday', 'vencimento'].includes(h))
-  const descIdx = lower.findIndex((h) => ['descricao', 'descrição', 'description', 'desc', 'nome', 'name', 'historico', 'histórico'].includes(h))
+  const descIdx = lower.findIndex((h) => ['descricao', 'descrição', 'description', 'desc', 'nome', 'name', 'historico', 'histórico', 'titulo', 'título'].includes(h))
   const statusIdx = lower.findIndex((h) => ['status', 'situacao', 'situação', 'pago', 'estado'].includes(h))
   return { catIdx, valIdx, dateIdx, descIdx, statusIdx }
+}
+
+/** Encontra a primeira linha que tenha Categoria e Valor (em qualquer coluna) para planilhas com título no topo */
+function findHeaderRowInGrid(sheetData) {
+  const maxScan = Math.min(20, sheetData.length)
+  for (let i = 0; i < maxScan; i++) {
+    const row = sheetData[i] || []
+    const headers = row.map((c) => String(c ?? '').trim())
+    const fixed = getFixedColumnIndices(headers)
+    const fallback = findColumns(headers)
+    const ok = (fixed && fixed.catIdx >= 0 && fixed.valIdx >= 0) || (fallback.catIdx >= 0 && fallback.valIdx >= 0)
+    if (ok) return [headers, ...sheetData.slice(i + 1)]
+  }
+  return null
 }
 
 function normalizePaymentStatus(raw) {
@@ -170,6 +184,18 @@ function normalizeRows(rawRows, catMap, customIndices) {
   return { rows, unmapped }
 }
 
+/** Converte texto colado (Excel/Sheets: tab ou vírgula) em matriz [headers, ...rows] */
+function parsePastedTable(text) {
+  const trimmed = String(text ?? '').trim()
+  if (!trimmed) return null
+  const firstLine = trimmed.split(/\r?\n/)[0] || ''
+  const delimiter = firstLine.includes('\t') ? '\t' : ','
+  const result = Papa.parse(trimmed, { delimiter, header: false, skipEmptyLines: true })
+  const rawData = result.data || []
+  if (rawData.length < 2) return null
+  return rawData
+}
+
 // ── Parsers ──────────────────────────────────────────────
 
 function parseCSV(file) {
@@ -191,7 +217,36 @@ function parseXLSX(file) {
     reader.onload = (e) => {
       try {
         const wb = XLSX.read(e.target.result, { type: 'array' })
-        const sheet = wb.Sheets[wb.SheetNames[0]]
+        const names = wb.SheetNames
+
+        // 1) Preferir aba EXPORT_DASH (formato Categoria | Valor para o dashboard)
+        const exportSheet = names.find((n) => /export\s*dash|dash\s*export/i.test(String(n).trim()))
+        if (exportSheet) {
+          const sheet = wb.Sheets[exportSheet]
+          const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+          const headers = (data[0] || []).map((c) => String(c ?? '').trim())
+          const fixed = getFixedColumnIndices(headers)
+          const fallback = findColumns(headers)
+          const hasCatVal = (fixed && fixed.catIdx >= 0 && fixed.valIdx >= 0) || (fallback.catIdx >= 0 && fallback.valIdx >= 0)
+          if (hasCatVal && data.length > 1) {
+            resolve(data)
+            return
+          }
+        }
+
+        // 2) Em qualquer aba, procurar linha de cabeçalho nas primeiras 20 linhas (planilhas com título no topo)
+        for (const name of names) {
+          const sheet = wb.Sheets[name]
+          const sheetData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+          const withHeader = findHeaderRowInGrid(sheetData)
+          if (withHeader && withHeader.length > 1) {
+            resolve(withHeader)
+            return
+          }
+        }
+
+        // 3) Fallback: primeira aba como antes
+        const sheet = wb.Sheets[names[0]]
         const data = XLSX.utils.sheet_to_json(sheet, { header: 1 })
         resolve(data)
       } catch (err) { reject(new Error(`Erro ao ler XLSX: ${err.message}`)) }
@@ -530,6 +585,10 @@ export default function FileImporter({ onTotals, month }) {
   const [aiColumnMappings, setAiColumnMappings] = useState(null)
   const [aiMappingLoading, setAiMappingLoading] = useState(false)
 
+  // Colar dados da planilha
+  const [pasteText, setPasteText] = useState('')
+  const [showPasteArea, setShowPasteArea] = useState(false)
+
   const importModeRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -633,6 +692,28 @@ export default function FileImporter({ onTotals, month }) {
       setMessage(err.message)
     }
   }, [userCategories, checkExistingAndImport])
+
+  const handleImportPaste = useCallback(async () => {
+    const rawData = parsePastedTable(pasteText)
+    if (!rawData || rawData.length < 2) {
+      setStatus('error')
+      setMessage('Cole pelo menos uma linha de cabeçalho (ex.: Categoria, Valor) e uma linha de dados.')
+      return
+    }
+    const headers = rawData[0].map((c) => String(c ?? '').trim())
+    const fixedIndices = getFixedColumnIndices(headers)
+    const autoDetected = findColumns(headers)
+    const columnIndices = fixedIndices || autoDetected
+    if (columnIndices.catIdx < 0 || columnIndices.valIdx < 0) {
+      setStatus('error')
+      setMessage('Cabeçalho deve ter colunas "Categoria" (ou tipo) e "Valor" (ou value/amount).')
+      return
+    }
+    setStatus('loading')
+    await importWithIndices(rawData, 'dados colados', columnIndices)
+    setPasteText('')
+    setShowPasteArea(false)
+  }, [pasteText, importWithIndices])
 
   const processFile = useCallback(async (file) => {
     setStatus('loading')
@@ -750,6 +831,39 @@ export default function FileImporter({ onTotals, month }) {
           {status === 'loading' ? 'Processando arquivo...' : 'Arraste um arquivo aqui ou clique para selecionar'}
         </p>
         <span className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">CSV, XLSX ou XML — qualquer formato de planilha</span>
+      </div>
+
+      {/* Colar dados (Excel/Sheets) */}
+      <div className="mt-3">
+        <button
+          type="button"
+          onClick={() => setShowPasteArea((v) => !v)}
+          className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+        >
+          {showPasteArea ? '▼ Ocultar' : '▶ Ou cole os dados da planilha'}
+        </button>
+        {showPasteArea && (
+          <div className="mt-2 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 space-y-2">
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+              Copie um trecho no Excel ou Google Sheets (com cabeçalho: Categoria, Valor, etc.) e cole abaixo. Use tab ou vírgula como separador.
+            </p>
+            <textarea
+              value={pasteText}
+              onChange={(e) => setPasteText(e.target.value)}
+              placeholder={'Categoria\tValor\nreceita\t100\ncontas fixas\t50'}
+              rows={4}
+              className="w-full px-3 py-2 text-xs rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 placeholder-gray-400 focus:ring-2 focus:ring-indigo-400 focus:outline-none resize-y"
+            />
+            <button
+              type="button"
+              onClick={handleImportPaste}
+              disabled={!pasteText.trim() || status === 'loading'}
+              className="px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed rounded-lg transition-colors cursor-pointer"
+            >
+              Importar colado
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Smart column mapping step */}
