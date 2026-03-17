@@ -133,6 +133,11 @@ export default function CashFlowCard({
               <p className="text-[10px] font-semibold text-blue-500 dark:text-blue-400 uppercase tracking-wide">
                 Reserva de emergência usada
               </p>
+              {cf.deficitWithoutReserve > 0 && (
+                <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">
+                  Déficit coberto pela reserva
+                </p>
+              )}
               <p className="text-[10px] text-gray-500 dark:text-gray-400">Fundo de emergência — não é saldo livre para consumo.</p>
               <div className="flex items-center justify-between">
                 <span className="text-xs text-gray-500 dark:text-gray-400">Transferido este mês</span>

@@ -7,8 +7,10 @@ import { listCategories } from '../services/categoryService'
 import { categorizeBatch } from '../services/aiCategorizationService'
 import { isAiAvailable } from '../services/aiService'
 import { detectColumnMapping, guessFieldFromHeader, COLUMN_FIELDS, FIELD_STYLES } from '../services/aiColumnMapperService'
+import { processFinancialInput, isGeminiAvailable, geminiItemsToTransactions } from '../services/geminiFinancialParserService'
 
 const ACCEPTED = '.csv,.xlsx,.xls,.xml'
+const ACCEPTED_GEMINI = '.csv,.xlsx,.xls,.png,.jpg,.jpeg'
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 
 const BASE_CATEGORY_MAP = {
@@ -330,6 +332,7 @@ function ColumnMappingStep({ rawData, aiMappings, aiLoading, onConfirm, onCancel
     const maxCols = Math.max(
       row0.length,
       ...(rawData.slice(0, 8).map(r => (r && Array.isArray(r) ? r.length : 0)))
+    )
     return Array.from({ length: maxCols }, (_, i) => ({
       index: i,
       name: String((row0[i] ?? '')).trim(),
@@ -652,6 +655,11 @@ export default function FileImporter({ onTotals, month }) {
   const [pasteText, setPasteText] = useState('')
   const [showPasteArea, setShowPasteArea] = useState(false)
 
+  // Extração com Gemini (IA)
+  const [useGeminiImport, setUseGeminiImport] = useState(false)
+  const [geminiReviewItems, setGeminiReviewItems] = useState(null)
+  const [geminiFileName, setGeminiFileName] = useState(null)
+
   const importModeRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -669,6 +677,8 @@ export default function FileImporter({ onTotals, month }) {
     setPendingRawData(null)
     setAiColumnMappings(null)
     setAiMappingLoading(false)
+    setGeminiReviewItems(null)
+    setGeminiFileName(null)
   }, [])
 
   const finishImport = useCallback(async (allRows, fileName, replaceExisting) => {
@@ -756,6 +766,58 @@ export default function FileImporter({ onTotals, month }) {
     }
   }, [userCategories, checkExistingAndImport])
 
+  const processFileGemini = useCallback(async (file) => {
+    setStatus('loading')
+    setMessage('Extraindo com IA (Gemini)...')
+    setGeminiReviewItems(null)
+    setGeminiFileName(null)
+    try {
+      let content
+      let mimeType = file.type || 'application/octet-stream'
+      const ext = (file.name || '').split('.').pop()?.toLowerCase()
+
+      if (/^image\//.test(mimeType)) {
+        content = await file.arrayBuffer()
+      } else if (ext === 'xlsx' || ext === 'xls') {
+        const rawData = await parseXLSX(file)
+        content = rawData.map((row) => (row || []).map((c) => String(c ?? '')).join(',')).join('\n')
+        mimeType = 'text/csv'
+      } else {
+        content = await file.text()
+        mimeType = 'text/csv'
+      }
+
+      const items = await processFinancialInput(content, mimeType)
+      if (!items.length) {
+        setStatus('error')
+        setMessage('Nenhum lançamento extraído pela IA.')
+        return
+      }
+      setGeminiReviewItems(items)
+      setGeminiFileName(file.name)
+      setStatus('idle')
+      setMessage('')
+    } catch (err) {
+      setStatus('error')
+      setMessage(err?.message || 'Erro ao processar com Gemini.')
+    }
+  }, [])
+
+  const handleGeminiConfirm = useCallback(async (replaceExisting) => {
+    if (!geminiReviewItems?.length || !geminiFileName) return
+    const txs = geminiItemsToTransactions(geminiReviewItems)
+    const rows = txs.map((tx) => ({
+      categoria: tx.category,
+      descricao: tx.description,
+      valor: tx.amount,
+      data: tx.date,
+      payment_status: tx.payment_status,
+    }))
+    setGeminiReviewItems(null)
+    setGeminiFileName(null)
+    await checkExistingAndImport(rows, geminiFileName)
+  }, [geminiReviewItems, geminiFileName, checkExistingAndImport])
+
   const handleImportPaste = useCallback(async () => {
     const rawData = parsePastedTable(pasteText)
     if (!rawData || rawData.length < 2) {
@@ -786,6 +848,14 @@ export default function FileImporter({ onTotals, month }) {
     try {
       if (file.size > MAX_FILE_SIZE_BYTES) {
         throw new Error(`Arquivo muito grande (máx. ${MAX_FILE_SIZE_BYTES / 1024 / 1024} MB). Escolha um arquivo menor.`)
+      }
+      if (useGeminiImport && isGeminiAvailable()) {
+        const ext = (file.name || '').split('.').pop()?.toLowerCase()
+        const geminiOk = ['csv', 'xlsx', 'xls', 'png', 'jpg', 'jpeg'].includes(ext)
+        if (geminiOk) {
+          await processFileGemini(file)
+          return
+        }
       }
       const parser = getParser(file.name)
       if (!parser) throw new Error(`Formato não suportado: "${file.name}". Use CSV, XLSX ou XML.`)
@@ -821,7 +891,7 @@ export default function FileImporter({ onTotals, month }) {
       setStatus('error')
       setMessage(err.message)
     }
-  }, [resetAll, importWithIndices])
+  }, [resetAll, importWithIndices, useGeminiImport, processFileGemini])
 
   // User confirmed column mapping
   const handleColumnMappingConfirm = useCallback(async (indices) => {
@@ -873,6 +943,20 @@ export default function FileImporter({ onTotals, month }) {
 
   return (
     <div className="w-full max-w-xl mx-auto">
+      {isGeminiAvailable() && (
+        <div className="mb-3 flex items-center gap-2">
+          <input
+            id="use-gemini-import"
+            type="checkbox"
+            checked={useGeminiImport}
+            onChange={(e) => setUseGeminiImport(e.target.checked)}
+            className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-400"
+          />
+          <label htmlFor="use-gemini-import" className="text-xs font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
+            Usar extração com IA (Gemini) — CSV, XLSX ou imagem
+          </label>
+        </div>
+      )}
       {/* Drop zone */}
       <div
         onDrop={handleDrop}
@@ -883,7 +967,13 @@ export default function FileImporter({ onTotals, month }) {
           dragging ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950 scale-[1.02]' : statusColors[status]
         }`}
       >
-        <input ref={inputRef} type="file" accept={ACCEPTED} onChange={handleFileChange} className="hidden" />
+        <input
+          ref={inputRef}
+          type="file"
+          accept={useGeminiImport ? ACCEPTED_GEMINI : ACCEPTED}
+          onChange={handleFileChange}
+          className="hidden"
+        />
         <div className="text-3xl sm:text-4xl">
           {status === 'loading' && '⏳'}
           {status === 'success' && '✅'}
@@ -891,9 +981,11 @@ export default function FileImporter({ onTotals, month }) {
           {(status === 'idle' || dragging) && '📂'}
         </div>
         <p className="text-gray-600 dark:text-gray-300 text-center text-xs sm:text-sm font-medium">
-          {status === 'loading' ? 'Processando arquivo...' : 'Arraste um arquivo aqui ou clique para selecionar'}
+          {status === 'loading' ? (useGeminiImport ? 'Extraindo com IA...' : 'Processando arquivo...') : 'Arraste um arquivo aqui ou clique para selecionar'}
         </p>
-        <span className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">CSV, XLSX ou XML — qualquer formato de planilha</span>
+        <span className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">
+          {useGeminiImport ? 'CSV, XLSX ou PNG/JPG' : 'CSV, XLSX ou XML — qualquer formato de planilha'}
+        </span>
       </div>
 
       {/* Colar dados (Excel/Sheets) */}
@@ -949,6 +1041,53 @@ export default function FileImporter({ onTotals, month }) {
           onCancel={() => { setPendingUnmapped(null); setPendingRows(null); setPendingFile(null); setAiSuggestions(null) }}
           aiSuggestions={aiSuggestions}
         />
+      )}
+
+      {/* Revisão dos dados extraídos pelo Gemini */}
+      {geminiReviewItems && geminiReviewItems.length > 0 && (
+        <div className="mt-3 p-4 rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50/50 dark:bg-violet-950/30 space-y-3">
+          <p className="text-xs font-semibold text-violet-800 dark:text-violet-300">
+            Revisar {geminiReviewItems.length} lançamento(s) extraído(s) por IA de &quot;{geminiFileName}&quot;
+          </p>
+          <div className="max-h-60 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+            <table className="w-full text-left text-xs">
+              <thead className="sticky top-0 bg-gray-100 dark:bg-gray-800">
+                <tr>
+                  <th className="px-2 py-1.5 font-semibold">Data</th>
+                  <th className="px-2 py-1.5 font-semibold">Descrição</th>
+                  <th className="px-2 py-1.5 font-semibold text-right">Valor</th>
+                  <th className="px-2 py-1.5 font-semibold">Status</th>
+                  <th className="px-2 py-1.5 font-semibold">Reserva</th>
+                </tr>
+              </thead>
+              <tbody>
+                {geminiReviewItems.map((item, i) => (
+                  <tr key={i} className="border-t border-gray-100 dark:border-gray-800">
+                    <td className="px-2 py-1">{item.date || '—'}</td>
+                    <td className="px-2 py-1 truncate max-w-[140px]">{item.description}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{Number(item.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                    <td className="px-2 py-1">{item.status}</td>
+                    <td className="px-2 py-1">{item.is_reserva ? 'Sim' : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => handleGeminiConfirm()}
+              className="px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors cursor-pointer"
+            >
+              Confirmar importação
+            </button>
+            <button
+              onClick={() => { setGeminiReviewItems(null); setGeminiFileName(null) }}
+              className="px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors cursor-pointer"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Import mode modal */}
