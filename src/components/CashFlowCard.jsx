@@ -133,6 +133,7 @@ export default function CashFlowCard({
               <p className="text-[10px] font-semibold text-blue-500 dark:text-blue-400 uppercase tracking-wide">
                 Reserva de emergência usada
               </p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400">Fundo de emergência — não é saldo livre para consumo.</p>
               <div className="flex items-center justify-between">
                 <span className="text-xs text-gray-500 dark:text-gray-400">Transferido este mês</span>
                 <span className="text-xs font-bold text-blue-600 dark:text-blue-400">{BRL(cf.transferred)}</span>

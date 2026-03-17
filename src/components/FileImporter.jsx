@@ -42,6 +42,29 @@ const BASE_CATEGORY_MAP = {
   'gasto diário': 'compras',
   mercado: 'compras',
   supermercado: 'compras',
+  reserva: 'reserva',
+  'fundo de reserva': 'reserva',
+  'transferência de reserva': 'reserva',
+  'transferencia de reserva': 'reserva',
+  'uso da reserva': 'reserva',
+}
+
+/** Mapeamento fixo do CSV: Data, Categoria, Título, Valor, Status */
+function getFixedColumnIndices(headers) {
+  const lower = headers.map((h) => String(h ?? '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
+  const dataIdx = lower.findIndex((h) => h === 'data' || h === 'date' || h === 'dia' || h === 'dt')
+  const catIdx = lower.findIndex((h) => h === 'categoria' || h === 'category' || h === 'tipo')
+  const tituloIdx = lower.findIndex((h) => h === 'titulo' || h === 'título' || h === 'descricao' || h === 'descrição' || h === 'nome' || h === 'name')
+  const valorIdx = lower.findIndex((h) => h === 'valor' || h === 'value' || h === 'amount')
+  const statusIdx = lower.findIndex((h) => h === 'status' || h === 'pago' || h === 'situacao' || h === 'situação')
+  if (catIdx === -1 || valorIdx === -1) return null
+  return {
+    dateIdx: dataIdx >= 0 ? dataIdx : -1,
+    catIdx,
+    descIdx: tituloIdx >= 0 ? tituloIdx : catIdx,
+    valIdx: valorIdx,
+    statusIdx: statusIdx >= 0 ? statusIdx : -1,
+  }
 }
 
 function buildCategoryMap(userCategories) {
@@ -627,11 +650,13 @@ export default function FileImporter({ onTotals, month }) {
       if (!rawData.length) throw new Error('Arquivo vazio.')
 
       const headers = rawData[0]
+      const fixedIndices = getFixedColumnIndices(headers)
       const autoDetected = findColumns(headers)
+      const columnIndices = fixedIndices || autoDetected
 
-      // Fast path: if required columns detected, proceed directly
-      if (autoDetected.catIdx >= 0 && autoDetected.valIdx >= 0) {
-        await importWithIndices(rawData, file.name, autoDetected)
+      // Prefer fixed mapping (Data, Categoria, Título, Valor, Status) when detected; otherwise fallback
+      if (columnIndices.catIdx >= 0 && columnIndices.valIdx >= 0) {
+        await importWithIndices(rawData, file.name, columnIndices)
         return
       }
 

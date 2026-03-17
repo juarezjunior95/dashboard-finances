@@ -135,7 +135,7 @@ export default function BalanceInput({ value, updatedAt, onSave, reserveTotal, o
         <InlineBalanceField
           icon="🛡️"
           label="Fundo de reserva"
-          hint="Informar reserva total"
+          hint="Fundo de emergência; não conta como disponível para gastos"
           value={reserveTotal}
           updatedAt={null}
           onSave={(v) => onSaveReserve(v)}

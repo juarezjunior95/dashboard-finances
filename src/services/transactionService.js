@@ -208,11 +208,13 @@ export async function getTransactionTotals(month) {
     detailedTotals[tx.category] += Number(tx.amount) || 0
   }
   
-  // Group by parent category
+  // Group by parent category; exclude 'reserva' from operational totals (Disponível / Gasto diário)
+  const OPERATIONAL_PARENTS = ['receita', 'fixas', 'cartao', 'invest']
   const totals = { receita: 0, fixas: 0, cartao: 0, invest: 0 }
   for (const [key, amount] of Object.entries(detailedTotals)) {
     const parent = parentMap[key] || key
-    if (parent in totals) {
+    if (parent === 'reserva') continue
+    if (OPERATIONAL_PARENTS.includes(parent)) {
       totals[parent] += Number(amount) || 0
     }
   }

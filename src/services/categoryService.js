@@ -32,6 +32,7 @@ export const DEFAULT_CATEGORIES = [
   { key: 'cartao', label: 'Cartão', color: 'orange', parent_category: 'cartao', icon: '💳', is_default: true, sort_order: 5 },
   { key: 'compras', label: 'Compras/Gastos Diários', color: 'amber', parent_category: 'cartao', icon: '🛒', is_default: true, sort_order: 6 },
   { key: 'invest', label: 'Investimentos', color: 'indigo', parent_category: 'invest', icon: '📈', is_default: true, sort_order: 7 },
+  { key: 'reserva', label: 'Reserva / Fundo de emergência', color: 'violet', parent_category: 'reserva', icon: '🏦', is_default: true, sort_order: 8 },
 ]
 
 export const AVAILABLE_COLORS = [
