@@ -1,22 +1,45 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
-const MODEL = 'gemini-1.5-flash'
+/** gemini-1.5-flash foi descontinuado na API; usar alias atual */
+const MODEL = 'gemini-flash-latest'
+
+/** Chaves aceitas no app (transações) */
+export const GEMINI_CATEGORY_KEYS = ['receita', 'fixas', 'cartao', 'compras', 'invest', 'reserva']
+
+export const GEMINI_REVIEW_CATEGORY_OPTIONS = [
+  { value: 'receita', label: '💰 Receita' },
+  { value: 'fixas', label: '🏠 Contas fixas' },
+  { value: 'cartao', label: '💳 Cartão' },
+  { value: 'compras', label: '🛒 Compras / dia a dia' },
+  { value: 'invest', label: '📈 Investimentos' },
+  { value: 'reserva', label: '🏦 Reserva' },
+]
+
 const SYSTEM_PROMPT = `Você é um extrator de dados financeiros. Sua única saída deve ser um array JSON, sem texto antes ou depois.
 
 INPUT: Qualquer tabela financeira (texto CSV/planilha) ou imagem de planilha/recibo.
 
-OUTPUT: Um único array de objetos JSON, cada objeto com exatamente estes campos (nomes em português):
-- "data": string no formato "YYYY-MM-DD" (ou null se não identificável)
-- "descricao": string com o título/descrição do lançamento
-- "valor": número (float). Positivo = receita, negativo = despesa. NUNCA use strings como "R$ 1.249,00"; converta para número puro (ex: -1249.00)
-- "status": exatamente "pago" ou "pendente"
-- "is_reserva": boolean. Marque true se o título ou categoria mencionar: Reserva, Transferência de reserva, Fundo de Segurança, Fundo de emergência, Aplicação reserva
+OUTPUT: Um único array de objetos JSON, cada objeto com estes campos (nomes em português):
+- "data": string "YYYY-MM-DD" ou null
+- "descricao": string (título do lançamento)
+- "valor": número float. Positivo = entrada/receita, negativo = despesa. Sem "R$" na saída.
+- "status": "pago" ou "pendente"
+- "is_reserva": boolean (true se for reserva/fundo emergência/transferência de reserva)
+- "categoria": OBRIGATÓRIO. Uma destas chaves em minúsculas, conforme o contexto da planilha:
+  - "receita" — salário, NTT, ganhos extras, entradas, receitas
+  - "fixas" — dízimo, aluguel, luz, água, internet, academia, mensalidades fixas, "contas fixas"
+  - "cartao" — fatura cartão, Bradesco, Nubank, Itaú cartão, Mercado Pago cartão, parcelas de cartão
+  - "compras" — mercado, Uber, comida fora, gastos do dia a dia (se não for claramente cartão)
+  - "invest" — investimento, aplicação, poupança investimento
+  - "reserva" — só se is_reserva for true ou for explicitamente fundo de reserva
 
-REGRAS DE NORMALIZAÇÃO:
-- valor: remover "R$", trocar vírgula por ponto, converter para número. Despesas como números negativos.
-- status: mapear "ok", "recebido", "concluído", "pago", "sim" -> "pago"; "pendente", "a pagar", "não" -> "pendente"
-- Se não houver informação de data, use null para data.
-- Retorne APENAS o array JSON, sem markdown e sem explicação. Exemplo: [{"data":"2026-03-01","descricao":"Aluguel","valor":-850,"status":"pendente","is_reserva":false}]`
+Se a planilha tiver uma coluna "Categoria" (ex.: contas fixas, cartao de credito), use-a para preencher "categoria" mapeando: contas fixas→fixas, cartao/cartão→cartao, investimentos→invest.
+
+REGRAS:
+- valor: normalizar número; despesas negativas.
+- status: ok/recebido/concluído→pago; pendente/a pagar→pendente
+- Retorne APENAS o array JSON. Exemplo:
+[{"data":null,"descricao":"ALUGUEL","valor":-850,"status":"pendente","is_reserva":false,"categoria":"fixas"}]`
 
 function getApiKey() {
   return import.meta.env.VITE_GEMINI_API_KEY || null
@@ -26,6 +49,37 @@ function getApiKey() {
 export function isGeminiAvailable() {
   const key = getApiKey()
   return typeof key === 'string' && key.length > 0 && key !== 'sua-gemini-api-key-aqui'
+}
+
+const CAT_SET = new Set(GEMINI_CATEGORY_KEYS)
+
+function normalizeGeminiCategory(raw, isReserva, amount, descricao = '') {
+  if (isReserva) return 'reserva'
+  const s = String(raw ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+  if (CAT_SET.has(s)) return s
+  const d = String(descricao)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+  const aliases = [
+    [/^(receita|salario|entrada|ganho)/, 'receita'],
+    [/fixa|aluguel|dizimo|luz|agua|internet|mensalidade|academia|seguro celular/, 'fixas'],
+    [/cartao|credito|nubank|bradesco|itau|mercado pago|parcela/, 'cartao'],
+    [/invest|aplica(cao|ção)/, 'invest'],
+    [/reserva|emergencia/, 'reserva'],
+    [/mercado|uber|ifood|comida|combustivel|pizzaria/, 'compras'],
+  ]
+  for (const [re, cat] of aliases) {
+    if (re.test(s)) return cat
+  }
+  for (const [re, cat] of aliases) {
+    if (re.test(d) && amount < 0) return cat
+  }
+  return amount >= 0 ? 'receita' : 'compras'
 }
 
 /**
@@ -108,8 +162,9 @@ export async function processFinancialInput(fileContent, mimeType) {
       const description = String(item.descricao ?? item.description ?? '').trim() || 'Sem descrição'
       const status = item.status === 'pago' || item.status === 'pendente' ? item.status : 'pendente'
       const is_reserva = Boolean(item.is_reserva)
+      const categoria = normalizeGeminiCategory(item.categoria, is_reserva, amount, description)
 
-      return { date, description, amount, status, is_reserva }
+      return { date, description, amount, status, is_reserva, categoria }
     })
     .filter((item) => item.description && (item.amount !== 0 || item.description !== 'Sem descrição'))
 
@@ -117,15 +172,18 @@ export async function processFinancialInput(fileContent, mimeType) {
 }
 
 /**
- * Converte itens extraídos pelo Gemini para o formato de transação do banco.
- * is_reserva -> category 'reserva'; senão receita/compras por sinal do amount.
- * Valida amount (evita NaN).
+ * Converte itens (revisão) para transações do banco.
+ * Usa item.categoria quando válida; is_reserva força reserva.
  */
 export function geminiItemsToTransactions(items) {
   return items.map((item) => {
     let amount = Number(item.amount)
     if (Number.isNaN(amount)) amount = 0
-    const category = item.is_reserva ? 'reserva' : (amount >= 0 ? 'receita' : 'compras')
+    let category = item.categoria
+    if (!category || !CAT_SET.has(category)) {
+      category = item.is_reserva ? 'reserva' : (amount >= 0 ? 'receita' : 'compras')
+    }
+    if (item.is_reserva) category = 'reserva'
     return {
       category,
       description: item.description || '',

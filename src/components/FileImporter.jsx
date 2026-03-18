@@ -7,7 +7,12 @@ import { listCategories } from '../services/categoryService'
 import { categorizeBatch } from '../services/aiCategorizationService'
 import { isAiAvailable } from '../services/aiService'
 import { detectColumnMapping, guessFieldFromHeader, COLUMN_FIELDS, FIELD_STYLES } from '../services/aiColumnMapperService'
-import { processFinancialInput, isGeminiAvailable, geminiItemsToTransactions } from '../services/geminiFinancialParserService'
+import {
+  processFinancialInput,
+  isGeminiAvailable,
+  geminiItemsToTransactions,
+  GEMINI_REVIEW_CATEGORY_OPTIONS,
+} from '../services/geminiFinancialParserService'
 
 const ACCEPTED = '.csv,.xlsx,.xls,.xml'
 const ACCEPTED_GEMINI = '.csv,.xlsx,.xls,.png,.jpg,.jpeg'
@@ -1049,25 +1054,43 @@ export default function FileImporter({ onTotals, month }) {
           <p className="text-xs font-semibold text-violet-800 dark:text-violet-300">
             Revisar {geminiReviewItems.length} lançamento(s) extraído(s) por IA de &quot;{geminiFileName}&quot;
           </p>
-          <div className="max-h-60 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
-            <table className="w-full text-left text-xs">
-              <thead className="sticky top-0 bg-gray-100 dark:bg-gray-800">
+          <p className="text-[10px] text-violet-600 dark:text-violet-400">
+            Ajuste a <strong>categoria</strong> de cada linha antes de salvar (Receita, Fixas, Cartão, etc.).
+          </p>
+          <div className="max-h-72 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+            <table className="w-full text-left text-xs min-w-[520px]">
+              <thead className="sticky top-0 bg-gray-100 dark:bg-gray-800 z-10">
                 <tr>
                   <th className="px-2 py-1.5 font-semibold">Data</th>
                   <th className="px-2 py-1.5 font-semibold">Descrição</th>
                   <th className="px-2 py-1.5 font-semibold text-right">Valor</th>
                   <th className="px-2 py-1.5 font-semibold">Status</th>
-                  <th className="px-2 py-1.5 font-semibold">Reserva</th>
+                  <th className="px-2 py-1.5 font-semibold min-w-[140px]">Categoria</th>
                 </tr>
               </thead>
               <tbody>
                 {geminiReviewItems.map((item, i) => (
                   <tr key={i} className="border-t border-gray-100 dark:border-gray-800">
-                    <td className="px-2 py-1">{item.date || '—'}</td>
-                    <td className="px-2 py-1 truncate max-w-[140px]">{item.description}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{Number(item.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                    <td className="px-2 py-1">{item.status}</td>
-                    <td className="px-2 py-1">{item.is_reserva ? 'Sim' : '—'}</td>
+                    <td className="px-2 py-1 align-middle">{item.date || '—'}</td>
+                    <td className="px-2 py-1 align-middle truncate max-w-[120px]" title={item.description}>{item.description}</td>
+                    <td className="px-2 py-1 text-right tabular-nums align-middle">{Number(item.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                    <td className="px-2 py-1 align-middle">{item.status}</td>
+                    <td className="px-1 py-0.5 align-middle">
+                      <select
+                        value={item.categoria || 'compras'}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setGeminiReviewItems((prev) =>
+                            prev.map((row, j) => (j === i ? { ...row, categoria: v, is_reserva: v === 'reserva' } : row)),
+                          )
+                        }}
+                        className="w-full max-w-[150px] text-[10px] px-1.5 py-1 rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200"
+                      >
+                        {GEMINI_REVIEW_CATEGORY_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1075,12 +1098,14 @@ export default function FileImporter({ onTotals, month }) {
           </div>
           <div className="flex flex-wrap gap-2">
             <button
+              type="button"
               onClick={() => handleGeminiConfirm()}
               className="px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors cursor-pointer"
             >
               Confirmar importação
             </button>
             <button
+              type="button"
               onClick={() => { setGeminiReviewItems(null); setGeminiFileName(null) }}
               className="px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors cursor-pointer"
             >
