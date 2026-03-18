@@ -8,5 +8,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
     'Supabase não configurado. Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no .env',
   )
 }
+if (/seu-projeto|SEU-PROJETO/i.test(supabaseUrl) || /sua-anon-key-aqui/i.test(supabaseAnonKey)) {
+  throw new Error(
+    'Supabase ainda está com valores de exemplo. No .env, substitua VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY pelos dados do seu projeto em https://app.supabase.com → Settings → API',
+  )
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)

@@ -71,13 +71,12 @@ function InputField({ label, name, value, onChange, color }) {
           name={name}
           type="number"
           step="0.01"
-          min="0"
-          value={value || ''}
+          value={value === '' || value == null ? '' : value}
           onChange={onChange}
           placeholder="0,00"
-          className={`w-full pl-9 pr-3 py-2 sm:py-2.5 rounded-xl border text-sm font-medium
-            bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100
-            placeholder-gray-300 dark:placeholder-gray-600
+          className={`w-full pl-9 pr-3 py-2 sm:py-2.5 rounded-xl border text-sm font-semibold tabular-nums
+            bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100
+            placeholder-gray-400 dark:placeholder-gray-500
             focus:outline-none focus:ring-2 transition-shadow
             ${color}`}
         />

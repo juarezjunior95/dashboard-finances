@@ -1054,27 +1054,27 @@ export default function FileImporter({ onTotals, month }) {
           <p className="text-xs font-semibold text-violet-800 dark:text-violet-300">
             Revisar {geminiReviewItems.length} lançamento(s) extraído(s) por IA de &quot;{geminiFileName}&quot;
           </p>
-          <p className="text-[10px] text-violet-600 dark:text-violet-400">
-            Ajuste a <strong>categoria</strong> de cada linha antes de salvar (Receita, Fixas, Cartão, etc.).
+          <p className="text-[10px] text-violet-700 dark:text-violet-300">
+            Ajuste a <strong>categoria</strong> de cada linha antes de salvar. Despesas podem aparecer com sinal negativo na tabela (como a IA leu); ao confirmar, são gravadas como <strong>valores positivos</strong> no dashboard.
           </p>
-          <div className="max-h-72 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
-            <table className="w-full text-left text-xs min-w-[520px]">
-              <thead className="sticky top-0 bg-gray-100 dark:bg-gray-800 z-10">
+          <div className="max-h-72 overflow-auto rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900">
+            <table className="w-full text-left text-xs min-w-[520px] text-gray-900 dark:text-gray-100">
+              <thead className="sticky top-0 bg-gray-100 dark:bg-gray-800 z-10 border-b border-gray-200 dark:border-gray-600">
                 <tr>
-                  <th className="px-2 py-1.5 font-semibold">Data</th>
-                  <th className="px-2 py-1.5 font-semibold">Descrição</th>
-                  <th className="px-2 py-1.5 font-semibold text-right">Valor</th>
-                  <th className="px-2 py-1.5 font-semibold">Status</th>
-                  <th className="px-2 py-1.5 font-semibold min-w-[140px]">Categoria</th>
+                  <th className="px-2 py-1.5 font-semibold text-gray-800 dark:text-gray-100">Data</th>
+                  <th className="px-2 py-1.5 font-semibold text-gray-800 dark:text-gray-100">Descrição</th>
+                  <th className="px-2 py-1.5 font-semibold text-right text-gray-800 dark:text-gray-100">Valor</th>
+                  <th className="px-2 py-1.5 font-semibold text-gray-800 dark:text-gray-100">Status</th>
+                  <th className="px-2 py-1.5 font-semibold min-w-[140px] text-gray-800 dark:text-gray-100">Categoria</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="text-gray-900 dark:text-gray-100">
                 {geminiReviewItems.map((item, i) => (
-                  <tr key={i} className="border-t border-gray-100 dark:border-gray-800">
-                    <td className="px-2 py-1 align-middle">{item.date || '—'}</td>
-                    <td className="px-2 py-1 align-middle truncate max-w-[120px]" title={item.description}>{item.description}</td>
-                    <td className="px-2 py-1 text-right tabular-nums align-middle">{Number(item.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                    <td className="px-2 py-1 align-middle">{item.status}</td>
+                  <tr key={i} className="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/80">
+                    <td className="px-2 py-1.5 align-middle text-gray-800 dark:text-gray-100">{item.date || '—'}</td>
+                    <td className="px-2 py-1.5 align-middle truncate max-w-[120px] text-gray-800 dark:text-gray-100" title={item.description}>{item.description}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums align-middle font-medium text-gray-900 dark:text-gray-50">{Number(item.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                    <td className="px-2 py-1.5 align-middle text-gray-800 dark:text-gray-100">{item.status}</td>
                     <td className="px-1 py-0.5 align-middle">
                       <select
                         value={item.categoria || 'compras'}
@@ -1084,7 +1084,7 @@ export default function FileImporter({ onTotals, month }) {
                             prev.map((row, j) => (j === i ? { ...row, categoria: v, is_reserva: v === 'reserva' } : row)),
                           )
                         }}
-                        className="w-full max-w-[150px] text-[10px] px-1.5 py-1 rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200"
+                        className="w-full max-w-[150px] text-[10px] px-1.5 py-1.5 rounded-md border border-gray-300 dark:border-gray-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                       >
                         {GEMINI_REVIEW_CATEGORY_OPTIONS.map((opt) => (
                           <option key={opt.value} value={opt.value}>{opt.label}</option>

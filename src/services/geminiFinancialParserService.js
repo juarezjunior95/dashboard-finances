@@ -175,6 +175,12 @@ export async function processFinancialInput(fileContent, mimeType) {
  * Converte itens (revisão) para transações do banco.
  * Usa item.categoria quando válida; is_reserva força reserva.
  */
+const EXPENSE_CATS = new Set(['fixas', 'cartao', 'compras', 'invest'])
+
+/**
+ * No dashboard, totais de despesa são positivos (ex.: R$ 450 em fixas).
+ * A IA costuma devolver despesas negativas — convertemos para valor absoluto ao gravar.
+ */
 export function geminiItemsToTransactions(items) {
   return items.map((item) => {
     let amount = Number(item.amount)
@@ -184,6 +190,9 @@ export function geminiItemsToTransactions(items) {
       category = item.is_reserva ? 'reserva' : (amount >= 0 ? 'receita' : 'compras')
     }
     if (item.is_reserva) category = 'reserva'
+    if (EXPENSE_CATS.has(category)) amount = Math.abs(amount)
+    if (category === 'receita') amount = Math.abs(amount)
+    if (category === 'reserva') amount = Math.abs(amount)
     return {
       category,
       description: item.description || '',
